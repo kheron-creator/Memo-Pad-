@@ -1,8 +1,10 @@
 // Supabase (shared with Progress Pad) + an IndexedDB offline cache.
 import { createClient } from '@supabase/supabase-js';
 
-const url = import.meta.env.VITE_SUPABASE_URL;
-const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
+// Public values (safe in the browser; row-level security protects the data). Vercel env vars override them.
+// Never put the service-role key here.
+const url = import.meta.env.VITE_SUPABASE_URL || 'https://hiwgaywnfxzeptflxrsi.supabase.co';
+const key = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhpd2dheXduZnh6ZXB0Zmx4cnNpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc3NDQyNDcsImV4cCI6MjEwMzMyMDI0N30.Kce8oAmx7SSkoytOuGZTaD8jDc84bM2yQ5rqUuw3hxw';
 export const configured = !!(url && key);
 export const supabase = configured
   ? createClient(url, key, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: 'pkce' } })

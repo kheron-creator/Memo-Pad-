@@ -6,7 +6,7 @@ const $ = id => document.getElementById(id);
 const pad = n => String(n).padStart(2, '0');
 const short = s => { s = Math.max(0, Math.floor(s || 0)); const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60; return h ? `${h}:${pad(m)}:${pad(s % 60)}` : `${m}:${pad(s % 60)}`; };
 const audio = $('lAudio'), q = new URLSearchParams(location.search);
-let memo = null, words = [], st = [], chapters = [], shown = -1, lastA = -2, lastCh = -2;
+let wasPlaying = null, memo = null, words = [], st = [], chapters = [], shown = -1, lastA = -2, lastCh = -2;
 
 const isEnd = x => /[.!?…]["'”’)]*$/.test(x) && !/^\d+[.)]$/.test(x);
 const isNum = x => /^\d+[.)]?$/.test(x);
@@ -35,7 +35,7 @@ async function load() {
   audio.src = s.data.signedUrl;
   const t0 = +q.get('t') || 0;
   if (t0) { const go = () => { if (audio.currentTime < t0 - 1) audio.currentTime = t0; }; audio.addEventListener('loadedmetadata', go, { once: true }); audio.addEventListener('canplay', go, { once: true }); audio.addEventListener('play', go, { once: true }); }
-  renderChapters(); if (!words.length) $('lSent').innerHTML = '<span class="lmsg">Press play to listen.</span>';
+  renderChapters(); renderTicks(); if (!words.length) $('lSent').innerHTML = '<span class="lmsg">Press play to listen.</span>';
   if ('mediaSession' in navigator) {
     navigator.mediaSession.metadata = new MediaMetadata({ title: data.title, artist: 'MemoPad · Progress Today', artwork: [{ src: '/icon-512.png', sizes: '512x512', type: 'image/png' }] });
     navigator.mediaSession.setActionHandler('play', () => audio.play()); navigator.mediaSession.setActionHandler('pause', () => audio.pause());
@@ -43,15 +43,16 @@ async function load() {
   }
   requestAnimationFrame(loop);
 }
-function fail(msg) { $('lTitle').textContent = 'MemoPad'; $('lSent').innerHTML = `<span class="lmsg">${msg}</span>`; document.querySelector('.lctl').hidden = true; $('lBar').hidden = true; document.querySelector('.ltime').hidden = true; }
+function fail(msg) { $('lTitle').textContent = 'MemoPad'; $('lSent').innerHTML = `<span class="lmsg">${msg}</span>`; document.querySelector('.ybar').hidden = true; $('ybig').hidden = true; }
 function renderChapters() {
   const L = $('lChaps'); L.innerHTML = ''; if (chapters.length < 2) return; $('lChh').hidden = false;
-  chapters.forEach((c, k) => { const b = document.createElement('button'); b.innerHTML = `<span class="n">${k + 1}</span><span class="t"></span><span class="tm">${short(c.t)}</span>`; b.querySelector('.t').textContent = c.title; b.onclick = () => { audio.currentTime = c.t; audio.play().catch(() => {}); scrollTo({ top: 0, behavior: 'smooth' }); }; L.appendChild(b); });
+  chapters.forEach((c, k) => { const b = document.createElement('button'); b.innerHTML = `<span class="n">${k + 1}</span><span class="t"></span><span class="tm">${short(c.t)}</span>`; b.querySelector('.t').textContent = c.title; b.onclick = () => { audio.currentTime = c.t; audio.play().catch(() => {}); scrollTo({ top: 0, behavior: 'smooth' }); poke(); }; L.appendChild(b); });
 }
 function loop() {
   const t = audio.currentTime || 0, d = audio.duration || memo.duration_s || 1;
-  $('lFill').style.width = (t / d * 100).toFixed(2) + '%'; $('lNow').textContent = short(t); $('lPlay').classList.toggle('on', !audio.paused);
-  const k = chapterAt(t); if (k !== lastCh) { lastCh = k; $('lCh').textContent = chapters.length > 1 && k >= 0 ? chapters[k].title : ''; $('lChaps').querySelectorAll('button').forEach((b, i) => b.classList.toggle('on', i === k)); }
+  const pc = (t / d * 100).toFixed(2) + '%'; $('lFill').style.width = pc; $('lDot').style.left = pc; $('lNow').textContent = short(t);
+  const playing = !audio.paused; if (playing !== wasPlaying) { wasPlaying = playing; $('yt').classList.toggle('playing', playing); $('lPlay').setAttribute('aria-label', playing ? 'Pause' : 'Play'); $('ybig').setAttribute('aria-label', playing ? 'Pause' : 'Play'); if (playing) { yt.classList.add('started'); poke(); } else showCtl(); }
+  const k = chapterAt(t); if (k !== lastCh) { lastCh = k; const nm = chapters.length > 1 && k >= 0 ? chapters[k].title : ''; $('lCh').textContent = nm; $('lChn').textContent = nm ? '· ' + nm : ''; $('lChaps').querySelectorAll('button').forEach((b, i) => b.classList.toggle('on', i === k)); }
   if (words.length) {
     const a = Math.max(0, activeWord(t));
     if (a !== lastA) {
@@ -70,27 +71,57 @@ $('lFwd').onclick = () => audio.currentTime = Math.min(audio.duration || 1e9, au
 $('lPrevCh').onclick = prevCh; $('lNextCh').onclick = nextCh;
 const seekAt = e => { const r = $('lBar').getBoundingClientRect(); audio.currentTime = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * (audio.duration || memo.duration_s); };
 let drag = false;
-$('lBar').addEventListener('pointerdown', e => { drag = true; $('lBar').setPointerCapture(e.pointerId); seekAt(e); });
-$('lBar').addEventListener('pointermove', e => drag && seekAt(e));
-$('lBar').addEventListener('pointerup', () => drag = false);
-addEventListener('keydown', e => { if (e.code === 'Space') { e.preventDefault(); $('lPlay').click(); } });
+$('lBar').addEventListener('pointerdown', e => { e.stopPropagation(); drag = true; $('yt').classList.add('drag'); $('lBar').setPointerCapture(e.pointerId); seekAt(e); });
+$('lBar').addEventListener('pointermove', e => { if (drag) { seekAt(e); poke(); } });
+$('lBar').addEventListener('pointerup', () => { drag = false; $('yt').classList.remove('drag'); });
+function renderTicks() { const T = $('lTicks'), d = memo.duration_s || 1; T.innerHTML = ''; if (chapters.length < 2) return; chapters.slice(1).forEach(c => { const i = document.createElement('i'); i.style.left = (c.t / d * 100) + '%'; T.appendChild(i); }); }
+addEventListener('keydown', e => {
+  if (e.target.closest?.('input,textarea')) return;
+  const k = e.key.toLowerCase();
+  if (e.code === 'Space' || k === 'k') { e.preventDefault(); $('lPlay').click(); }
+  else if (k === 'j' || e.key === 'ArrowLeft') $('lBack').click();
+  else if (k === 'l' || e.key === 'ArrowRight') $('lFwd').click();
+  else if (k === 'f') $('lFull').click();
+  else return; poke();
+});
 load();
 
-// full screen captions, light mode, blackout
+// YouTube-style player: controls fade while playing, tap to show, double tap the sides to skip
+const yt = $('yt'); let hideT = 0;
+function showCtl() { yt.classList.add('ctl'); clearTimeout(hideT); }
+function poke() { showCtl(); if (!audio.paused && !drag) hideT = setTimeout(() => yt.classList.remove('ctl'), 3000); }
+showCtl();
+yt.addEventListener('pointermove', e => { if (e.pointerType === 'mouse') poke(); });
+yt.addEventListener('mouseleave', () => { if (!audio.paused) { clearTimeout(hideT); yt.classList.remove('ctl'); } });
+$('ybig').onclick = e => { e.stopPropagation(); $('lPlay').click(); poke(); };
+document.querySelector('.ybar').addEventListener('click', e => { e.stopPropagation(); poke(); });
+let tapT = 0, tapAt = 0, tapX = 0;
+function flash(id) { const el = $(id); el.classList.remove('show'); void el.offsetWidth; el.classList.add('show'); }
+yt.addEventListener('click', e => {
+  const r = yt.getBoundingClientRect(), x = (e.clientX - r.left) / r.width, n = Date.now();
+  if (n - tapAt < 320 && Math.abs(x - tapX) < 0.2) { clearTimeout(tapT); tapAt = 0;
+    if (x < 0.35) { $('lBack').click(); flash('yl'); } else if (x > 0.65) { $('lFwd').click(); flash('yr'); } else $('lFull').click();
+    return; }
+  tapAt = n; tapX = x;
+  tapT = setTimeout(() => { if (matchMedia('(hover:hover)').matches) { $('lPlay').click(); poke(); } else if (yt.classList.contains('ctl') && !audio.paused) { clearTimeout(hideT); yt.classList.remove('ctl'); } else poke(); }, 260);
+});
+
+// full screen, light mode, blackout
 const fsEl = () => document.fullscreenElement || document.webkitFullscreenElement;
 const goFull = el => { try { const r = el.requestFullscreen ? el.requestFullscreen({ navigationUI: 'hide' }) : el.webkitRequestFullscreen?.(); r?.catch?.(() => {}); } catch {} };
 const exitFull = () => { if (fsEl()) (document.exitFullscreen || document.webkitExitFullscreen)?.call(document); };
-function setFull(on) { document.body.classList.toggle('full', on); $('lFull').textContent = on ? 'Exit full screen' : 'Full screen'; if (on) { goFull(document.documentElement); scrollTo({ top: 0 }); } else exitFull(); }
+function setFull(on) { document.body.classList.toggle('full', on); $('lFull').setAttribute('aria-label', on ? 'Exit full screen' : 'Full screen'); $('lFull').title = on ? 'Exit full screen (f)' : 'Full screen (f)'; if (on) goFull(document.documentElement); else exitFull(); poke(); }
 $('lFull').onclick = () => setFull(!document.body.classList.contains('full'));
 document.addEventListener('fullscreenchange', () => { if (!fsEl() && document.body.classList.contains('full') && $('blackout').hidden) setFull(false); });
-function setLight(on) { document.body.classList.toggle('light', on); $('lLight').textContent = on ? 'Dark mode' : 'Light mode'; try { localStorage.setItem('mpl.light', on ? '1' : ''); } catch {} }
+document.addEventListener('webkitfullscreenchange', () => { if (!fsEl() && document.body.classList.contains('full') && $('blackout').hidden) setFull(false); });
+function setLight(on) { document.body.classList.toggle('light', on); $('lLight').setAttribute('aria-label', on ? 'Dark mode' : 'Light mode'); $('lLight').title = on ? 'Dark mode' : 'Light mode'; try { localStorage.setItem('mpl.light', on ? '1' : ''); } catch {} }
 $('lLight').onclick = () => setLight(!document.body.classList.contains('light'));
 try { setLight(!!localStorage.getItem('mpl.light')); } catch {}
 let wake = null, hintT = 0, lastTap = 0;
 async function blackout(on) {
   $('blackout').hidden = !on;
   if (on) { hint(); goFull($('blackout')); try { wake = await navigator.wakeLock?.request('screen'); } catch {} }
-  else { exitFull(); try { wake && wake.release(); } catch {} wake = null; }
+  else { exitFull(); document.body.classList.remove('full'); try { wake && wake.release(); } catch {} wake = null; }
 }
 function hint() { $('bHint').classList.add('show'); clearTimeout(hintT); hintT = setTimeout(() => $('bHint').classList.remove('show'), 2500); }
 $('lBlack').onclick = () => blackout(true);

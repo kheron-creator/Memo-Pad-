@@ -15,19 +15,30 @@
 <body>
 <main class="lp">
   <header><img src="/logo.png" alt="Progress Today" class="lplogo"></header>
-  <div class="ltools"><button id="lFull" type="button">Full screen</button><button id="lLight" type="button">Light mode</button><button id="lBlack" type="button">Blackout</button></div>
-  <h1 id="lTitle">Loading…</h1>
-  <div class="lch" id="lCh"></div>
-  <div class="lsent" id="lSent"></div>
-  <div class="lbar" id="lBar"><i id="lFill"></i></div>
-  <div class="ltime"><span id="lNow">0:00</span><span id="lDur">0:00</span></div>
-  <div class="lctl">
-    <button id="lPrevCh" aria-label="Previous chapter"><svg viewBox="0 0 32 32" width="26" fill="#fff"><rect x="6" y="7" width="3.4" height="18" rx="1.2"/><path d="M26 7.5v17a1 1 0 0 1-1.5.9L11 16.9a1 1 0 0 1 0-1.8l13.5-8.5a1 1 0 0 1 1.5.9z"/></svg></button>
-    <button id="lBack" aria-label="Back 15 seconds" class="lsk">-15</button>
-    <button id="lPlay" class="lplay" aria-label="Play"></button>
-    <button id="lFwd" aria-label="Forward 15 seconds" class="lsk">+15</button>
-    <button id="lNextCh" aria-label="Next chapter"><svg viewBox="0 0 32 32" width="26" fill="#fff"><rect x="22.6" y="7" width="3.4" height="18" rx="1.2"/><path d="M6 7.5v17a1 1 0 0 0 1.5.9L21 16.9a1 1 0 0 0 0-1.8L7.5 6.6A1 1 0 0 0 6 7.5z"/></svg></button>
+  <div class="yt" id="yt">
+    <div class="ych" id="lCh"></div>
+    <div class="lsent" id="lSent"></div>
+    <div class="ytap" id="ytap"><span class="yl" id="yl">-15</span><span class="yr" id="yr">+15</span></div>
+    <button class="ybig" id="ybig" aria-label="Play"><svg viewBox="0 0 24 24"><path class="ip" d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/><path class="ipa" d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg></button>
+    <div class="ybar">
+      <div class="lbar" id="lBar"><div class="ltrack"><i id="lFill"></i></div><b id="lDot"></b><div class="lticks" id="lTicks"></div></div>
+      <div class="yrow">
+        <button id="lPlay" class="yb" aria-label="Play" title="Play (k)"><svg viewBox="0 0 24 24"><path class="ip" d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/><path class="ipa" d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg></button>
+        <button id="lPrevCh" class="yb" aria-label="Previous chapter" title="Previous chapter"><svg viewBox="0 0 24 24"><path d="M6 5h2.5v14H6zM19 5.9v12.2a.8.8 0 0 1-1.2.7L9.6 12.7a.8.8 0 0 1 0-1.4l8.2-6.1a.8.8 0 0 1 1.2.7z"/></svg></button>
+        <button id="lNextCh" class="yb" aria-label="Next chapter" title="Next chapter"><svg viewBox="0 0 24 24"><path d="M15.5 5H18v14h-2.5zM5 5.9v12.2a.8.8 0 0 0 1.2.7l8.2-6.1a.8.8 0 0 0 0-1.4L6.2 5.2A.8.8 0 0 0 5 5.9z"/></svg></button>
+        <button id="lBack" class="yb ysk" aria-label="Back 15 seconds" title="Back 15 seconds (j)"><svg viewBox="0 0 24 24"><path d="M12 5V2L7 6l5 4V7a6 6 0 1 1-6 6H4a8 8 0 1 0 8-8z"/><text x="12" y="16.3" text-anchor="middle">15</text></svg></button>
+        <button id="lFwd" class="yb ysk" aria-label="Forward 15 seconds" title="Forward 15 seconds (l)"><svg viewBox="0 0 24 24"><path d="M12 5V2l5 4-5 4V7a6 6 0 1 0 6 6h2a8 8 0 1 1-8-8z"/><text x="12" y="16.3" text-anchor="middle">15</text></svg></button>
+        <span class="ytime"><span id="lNow">0:00</span> / <span id="lDur">0:00</span></span>
+        <span class="ychn" id="lChn"></span>
+        <span class="ysp"></span>
+        <button id="lLight" class="yb" aria-label="Light mode" title="Light mode"><svg viewBox="0 0 24 24"><path class="sun" d="M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10zM11 1h2v3h-2zM11 20h2v3h-2zM1 11h3v2H1zM20 11h3v2h-3zM4.2 5.6l1.4-1.4 2.1 2.1-1.4 1.4zM16.3 17.7l1.4-1.4 2.1 2.1-1.4 1.4zM4.2 18.4l2.1-2.1 1.4 1.4-2.1 2.1zM16.3 6.3l2.1-2.1 1.4 1.4-2.1 2.1z"/><path class="moon" d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/></svg></button>
+        <button id="lBlack" class="yb" aria-label="Blackout" title="Blackout"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><rect x="6" y="8" width="12" height="6" rx=".5"/><path d="M8 20h8v2H8z"/></svg></button>
+        <button id="lFull" class="yb" aria-label="Full screen" title="Full screen (f)"><svg viewBox="0 0 24 24"><path class="fin" d="M3 3h6v2H5v4H3zM15 3h6v6h-2V5h-4zM3 15h2v4h4v2H3zM19 15h2v6h-6v-2h4z"/><path class="fout" d="M7 3h2v6H3V7h4zM15 3h2v4h4v2h-6zM3 15h6v6H7v-4H3zM15 15h6v2h-4v4h-2z"/></svg></button>
+      </div>
+    </div>
   </div>
+  <h1 id="lTitle">Loading…</h1>
+  <div class="lby"><img src="/favicon-64.png" alt=""><span><b>MemoPad</b><br>Did you get the message?</span></div>
   <h2 class="lchh" id="lChh" hidden>Chapters</h2>
   <section class="lchaps" id="lChaps"></section>
   <footer><b>MemoPad</b> by Progress Today · Did you get the message?<br><a href="/">Make your own on MemoPad</a></footer>

@@ -99,7 +99,7 @@ button{cursor:pointer}
 #tx span.w.hit{background:#ffffff26;color:#fff}
 #tx span.w.hit.cur{background:#fff;color:#000}
 #tx .empty{color:var(--mute);font-size:17px;line-height:1.5;text-align:center;padding-top:30px}
-.searchbar{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);display:flex;align-items:center;gap:6px;background:#111113;border:1px solid #333;border-radius:24px;padding:6px 8px 6px 14px;box-shadow:0 10px 30px #000a;z-index:3}
+.searchbar{position:absolute;right:14px;top:12px;display:flex;align-items:center;gap:6px;background:#111113;border:1px solid #333;border-radius:24px;padding:6px 8px 6px 14px;box-shadow:0 10px 30px #000a;z-index:3}
 .searchbar input{background:none;border:0;outline:none;font-size:17px;width:120px;transition:width .2s}
 .searchbar input:focus,.searchbar.has input{width:180px}
 .searchbar .cnt{font-size:13px;color:var(--mute);font-weight:600;min-width:34px;text-align:center}
@@ -239,3 +239,9 @@ body.dragging .card::after{content:'Drop to add';position:absolute;inset:10px;bo
 @media (hover:none){.item .idel{opacity:.75}}
 .toast .tact{border:0;background:#fff;color:#000;font-family:var(--head);font-weight:700;font-size:13px;letter-spacing:.8px;border-radius:10px;padding:6px 12px;margin-left:10px}
 .sleepleft{color:var(--mute);font-weight:600;text-transform:none;letter-spacing:0;margin-left:6px}
+
+.searchbar .sopen{background:none;width:30px;height:30px;display:grid;place-items:center;color:#ddd}
+.searchbar.mini{padding:4px;gap:0;background:#111113cc}
+.searchbar.mini > :not(.sopen){display:none}
+.searchbar:not(.mini) .sopen{pointer-events:none}
+@media (max-width:820px){.searchbar:not(.mini){left:12px;right:12px}.searchbar:not(.mini) input,.searchbar:not(.mini) input:focus{flex:1;width:auto}}

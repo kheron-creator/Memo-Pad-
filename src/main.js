@@ -255,7 +255,7 @@ async function select(t) {
   $('emptycard').style.display = 'none'; $('ttl').textContent = t.title;
   const d = new Date(t.added); $('sub').textContent = `${d.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'short' })}   ${pad(d.getHours())}:${pad(d.getMinutes())}`;
   renderMeta();
-  search.q = ''; $('q').value = ''; $('sbar').classList.remove('has'); $('qc').textContent = '';
+  search.q = ''; $('q').value = ''; $('sbar').classList.remove('has'); $('sbar').classList.add('mini'); $('qc').textContent = '';
   status(t._txMsg || ''); prog(null); renderLib(); renderChapters(); renderTranscript(); drawOverview(); updateMain();
   await loadAudio(t);
   if (own && !t.words.length && navigator.onLine) enqueueTranscribe(t, true); // like Voice Memos: no transcript yet, so start one
@@ -558,8 +558,13 @@ function scrollToActive(force) {
 // ---------- search in the transcript ----------
 const search = { q: '', hits: [], i: -1 };
 $('q').addEventListener('input', () => { search.q = $('q').value.trim(); $('sbar').classList.toggle('has', !!search.q); applySearch(true); });
-$('q').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); step(e.shiftKey ? -1 : 1); } if (e.key === 'Escape') { $('q').value = ''; search.q = ''; $('sbar').classList.remove('has'); applySearch(false); $('q').blur(); } });
+$('q').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); step(e.shiftKey ? -1 : 1); } if (e.key === 'Escape') closeSearch(); });
 $('qn').onclick = () => step(1); $('qp').onclick = () => step(-1);
+// the search bar stays a small icon until you need it
+function closeSearch() { $('q').value = ''; search.q = ''; $('sbar').classList.remove('has'); $('sbar').classList.add('mini'); applySearch(false); $('q').blur(); }
+$('sOpen').onclick = () => { $('sbar').classList.remove('mini'); $('q').focus(); };
+$('sClose').onclick = closeSearch;
+$('q').addEventListener('blur', () => setTimeout(() => { if (!$('q').value.trim() && document.activeElement !== $('q')) $('sbar').classList.add('mini'); }, 150));
 function applySearch(jumpFirst) {
   wordEls.forEach(el => el.classList.remove('hit', 'cur')); search.hits = []; search.i = -1;
   if (!search.q || !cur) { $('qc').textContent = ''; return; }

@@ -109,13 +109,9 @@ async function refresh() {
 // ---------- storage meter ----------
 let storageUsed = 0;
 async function refreshStorage() {
-  let used = null;
-  const r = await supabase.rpc('memopad_storage_used');
-  if (!r.error && r.data != null) used = +r.data;
-  else { // fallback: add up my own files
-    const l = await supabase.storage.from(BUCKET).list(user.id, { limit: 1000 });
-    if (!l.error) used = (l.data || []).reduce((a, f) => a + (f.metadata?.size || 0), 0);
-  }
+  let used = null; // add up my own audio files
+  const l = await supabase.storage.from(BUCKET).list(user.id, { limit: 1000 });
+  if (!l.error) used = (l.data || []).reduce((a, f) => a + (f.metadata?.size || 0), 0);
   if (used == null) { $('storeTxt').textContent = 'Storage use is not available offline.'; return; }
   storageUsed = used;
   const pct = used / FREE_STORAGE * 100, warn = pct >= 70;

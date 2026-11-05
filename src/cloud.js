@@ -22,7 +22,7 @@ export function rowToTrack(r) {
     audio_path: r.audio_path, duration: +r.duration_s || 0,
     peaks: Array.isArray(r.peaks) ? Float32Array.from(r.peaks) : null,
     words: Array.isArray(r.words) ? r.words : [], chapters: Array.isArray(r.chapters) && r.chapters.length ? r.chapters : [{ t: 0, title: 'Start' }],
-    is_shared: !!r.is_shared, added: Date.parse(r.created_at) || Date.now(), updated_at: r.updated_at,
+    is_shared: !!r.is_shared, is_public: r.is_public, added: Date.parse(r.created_at) || Date.now(), updated_at: r.updated_at,
   };
 }
 const r3 = v => Math.round(v * 1000) / 1000;
@@ -34,6 +34,7 @@ export function trackToRow(t, withPeaks) {
     chapters: t.chapters.map(c => ({ t: r3(c.t), title: c.title })),
     is_shared: !!t.is_shared,
   };
+  if (typeof t.is_public === 'boolean') row.is_public = t.is_public; // the column exists once the public-links SQL has run
   if (withPeaks) row.peaks = t.peaks ? Array.from(t.peaks, v => Math.round(v * 100) / 100) : null;
   return row;
 }

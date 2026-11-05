@@ -254,7 +254,7 @@ function renderLib() {
     list.forEach(t => {
       const d = document.createElement('div'); d.className = 'item' + (t === cur ? ' on' : '') + (t === cur && !audio.paused ? ' playing' : '');
       const n = t.chapters.length;
-      d.innerHTML = `<span class="dot"></span><div style="min-width:0;flex:1"><div class="nm">${esc(t.title)}</div><div class="mt"><span>${short(t.duration)}</span><span>· ${n} chapter${n === 1 ? '' : 's'}</span>${t.category ? `<span class="cat">${esc(t.category)}</span>` : ''}${isOwn(t) && t.is_shared ? '<span class="sh">· shared</span>' : ''}${offline.has(t.id) ? '<span class="sh">· offline</span>' : ''}${txing === t ? '<span class="sh">· transcribing…</span>' : txQueue.includes(t) ? '<span class="sh">· waiting to transcribe</span>' : ''}</div></div>`;
+      d.innerHTML = `<span class="dot"></span><div style="min-width:0;flex:1"><div class="nm">${esc(t.title)}</div><div class="mt"><span>${short(t.duration)}</span><span>· ${n} chapter${n === 1 ? '' : 's'}</span>${t.category ? `<span class="cat">${esc(t.category)}</span>` : ''}${isOwn(t) && t.is_public ? '<span class="sh">· public</span>' : isOwn(t) && t.is_shared ? '<span class="sh">· shared</span>' : ''}${offline.has(t.id) ? '<span class="sh">· offline</span>' : ''}${txing === t ? '<span class="sh">· transcribing…</span>' : txQueue.includes(t) ? '<span class="sh">· waiting to transcribe</span>' : ''}</div></div>`;
       d.onclick = () => { stopPlaylist(); select(t); closeLib(); };
       { const a = document.createElement('button'); a.className = 'idel iadd'; a.title = 'Add to a playlist'; a.setAttribute('aria-label', 'Add ' + t.title + ' to a playlist'); a.textContent = '+'; a.onclick = e => { e.stopPropagation(); openAddPl({ m: t.id, label: t.title }); }; d.appendChild(a); }
       if (isOwn(t)) { const x = document.createElement('button'); x.className = 'idel'; x.title = 'Delete'; x.setAttribute('aria-label', 'Delete ' + t.title); x.innerHTML = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>'; x.onclick = e => { e.stopPropagation(); deleteTrack(t); }; d.appendChild(x); }
@@ -355,13 +355,22 @@ function renderMeta() {
 $('ttl').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); } });
 $('ttl').addEventListener('blur', () => { if (!cur || !isOwn(cur)) return; const v = $('ttl').textContent.trim(); if (!v) { $('ttl').textContent = cur.title; return; } if (v !== cur.title) { cur.title = v; save(); renderLib(); } });
 // share: a link that opens this memo, a chapter, or the current moment
-const linkFor = (t, sec) => `${location.origin}/?m=${t.id}${sec > 0 ? '&t=' + (Math.round(sec * 10) / 10) : ''}`;
+const linkFor = (t, sec) => `${location.origin}/${t.is_public ? 'listen.html?id' : '?m'}=${t.id}${sec > 0 ? '&t=' + (Math.round(sec * 10) / 10) : ''}`;
 $('shareBtn').onclick = () => {
   if (!cur) return; const k = chapterAt(audio.currentTime), c = cur.chapters[k];
-  $('shLead').textContent = isOwn(cur) && !cur.is_shared ? 'Turn on "Share to MemoPad" first, or only you can open the link. People need to be signed in to MemoPad to listen.' : 'People need to be signed in to MemoPad to listen.';
+  $('pubRow').hidden = !isOwn(cur); $('pubTog').checked = !!cur.is_public; shareLeadText();
   $('shChap').hidden = !(c && cur.chapters.length > 1); if (c) $('shChap').textContent = `This chapter: ${c.title}`;
   $('shHere').textContent = `From right now (${short(audio.currentTime)})`;
   $('shDlg').classList.add('open');
+};
+function shareLeadText() {
+  $('shLead').textContent = cur.is_public ? 'Public: anyone with the link can listen and read along, no sign-up needed.' : isOwn(cur) && !cur.is_shared ? 'Turn on "Share to MemoPad" first, or only you can open the link. People need to be signed in to MemoPad to listen.' : 'People need to be signed in to MemoPad to listen.';
+}
+$('pubTog').onchange = async () => {
+  const t = cur, on = $('pubTog').checked; if (!t || !isOwn(t)) return;
+  const { error } = await supabase.from(TABLE).update({ is_public: on }).eq('id', t.id);
+  if (error) { $('pubTog').checked = !on; toast(/is_public/.test(error.message) ? 'Public links need the one-time Supabase setup first.' : 'Could not change it: ' + error.message, true, 6000); return; }
+  t.is_public = on; cachePut(t); shareLeadText(); renderLib(); toast(on ? 'Public link on. Anyone with the link can listen.' : 'Public link off. Old public links stop working.');
 };
 async function shareLink(url, title) {
   $('shDlg').classList.remove('open');

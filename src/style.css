@@ -311,3 +311,7 @@ body.dragging .card::after{content:'Drop to add';position:absolute;inset:10px;bo
 .dt span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dt b{color:var(--mute);flex:0 0 auto}
 .dnote{color:var(--dim);font-size:12px;font-weight:600;margin:12px 0 0}
+
+.pubrow{background:#1b1b20;border-radius:14px;padding:10px 12px;margin:0 0 10px;display:flex;justify-content:space-between;align-items:center;gap:10px}
+.pubrow[hidden]{display:none}
+.pubrow small{color:var(--mute);font-weight:600;font-size:13px}

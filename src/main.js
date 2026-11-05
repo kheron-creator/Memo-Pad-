@@ -892,7 +892,13 @@ async function cvRun(addToLib) {
 (async () => {
   if (!configured) { showAuth('MemoPad is not set up yet: the Supabase settings are missing.'); $('authGo').disabled = $('authGoogle').disabled = true; return; }
   const { data: { session } } = await supabase.auth.getSession();
-  if (session) start(session.user); else showAuth();
+  if (session) start(session.user);
+  else {
+    // a shared link opened by someone not signed in: if that memo is public, go straight to the no-sign-up player
+    const d = (() => { try { return JSON.parse(sessionStorage.getItem('mp.deep')); } catch { return null; } })();
+    if (d && d.m) { const { data } = await supabase.from(TABLE).select('id').eq('id', d.m).eq('is_public', true).maybeSingle(); if (data) { location.replace(`/listen.html?id=${d.m}${d.t ? '&t=' + d.t : ''}`); return; } }
+    showAuth(d && d.m ? 'Sign in to listen to this memo. (Its owner has not made it public.)' : undefined);
+  }
   supabase.auth.onAuthStateChange((ev, s) => {
     setTimeout(() => { // never await Supabase inside this callback
       if (ev === 'SIGNED_OUT') { user = null; tracks = []; cur = null; audio.pause(); showAuth(); }

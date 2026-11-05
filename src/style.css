@@ -261,7 +261,7 @@ body.dragging .card::after{content:'Drop to add';position:absolute;inset:10px;bo
 .perow button:disabled{opacity:.3}
 .readic{position:absolute;right:64px;top:12px;z-index:3;width:40px;height:40px;border-radius:50%;border:1px solid #333;background:#111113cc;color:#ddd;display:none;place-items:center}
 #tx[style*="block"] ~ .readic{display:grid}
-.repbar{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);display:flex;align-items:center;gap:6px;background:#111113;border:1px solid #333;border-radius:24px;padding:6px 6px 6px 16px;box-shadow:0 10px 30px #000a;z-index:3;font-weight:600;font-size:14px;white-space:nowrap}
+.repbar{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);display:flex;align-items:center;gap:6px;background:#111113;border:1px solid #333;border-radius:24px;padding:6px 6px 6px 8px;box-shadow:0 10px 30px #000a;z-index:3;font-weight:600;font-size:14px;white-space:nowrap}
 .repbar[hidden]{display:none}
 .repbar button{border:0;background:#26262a;border-radius:16px;padding:6px 10px;font-weight:700;font-size:13px}
 .repbar button.x{background:none;color:var(--mute)}
@@ -282,7 +282,7 @@ body.dragging .card::after{content:'Drop to add';position:absolute;inset:10px;bo
 .rctl .rplay.on::before{left:22px;top:21px;width:6px;height:22px;border:0;background:#fff;box-shadow:13px 0 0 #fff}
 
 #tx span.w.fav{text-decoration:underline 2px #ffffff38;text-underline-offset:7px}
-.repbar .star{background:none;font-size:18px;padding:4px 6px;color:#ddd}
+.repbar .star{background:none;font-size:15px;padding:6px 8px;color:#ddd}
 .repbar .star.on{color:#fff}
 .favh{display:flex;align-items:center;justify-content:space-between}
 .favh .favplay{border:0;background:#ffffff12;border-radius:12px;padding:4px 10px;font-size:12px;font-weight:700;letter-spacing:.5px;text-transform:none}

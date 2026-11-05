@@ -580,7 +580,7 @@ function renderTranscript() {
     T.innerHTML = (txing === cur || txQueue.includes(cur))
       ? `<div class="empty">Transcribing in the background…<br>The words will appear here and light up as it plays.</div>`
       : isOwn(cur)
-      ? `<div class="empty">No transcript yet.<br>Press <b>TRANSCRIBE</b> to turn the audio into text that lights up as it plays.<br><br><span style="font-size:15px">Runs privately on your device. The first time it downloads a speech model.</span></div>`
+      ? `<div class="empty">No transcript yet.<br>Press <b>TRANSCRIBE</b> to turn the audio into text that lights up as it plays.<br><br><span style="font-size:15px">Runs privately on your device. The first time it downloads a speech model.${lowPower && cur.duration > 600 ? '<br>Long tracks transcribe best on a computer. Or paste your written script in Settings.' : ''}</span></div>`
       : `<div class="empty">No transcript for this memo yet.</div>`;
     return;
   }
@@ -671,11 +671,14 @@ function updateMain() {
   if (upBusy) { b.textContent = 'ADDING…'; b.disabled = true; return; }
   b.disabled = false; b.textContent = cur && cur.words.length ? 'ADD CHAPTER' : 'TRANSCRIBE';
 }
-$('mainBtn').onclick = () => { if (!cur || !isOwn(cur)) return; if (cur.words.length) addChapter(); else enqueueTranscribe(cur); };
+$('mainBtn').onclick = () => { if (!cur || !isOwn(cur)) return; if (cur.words.length) addChapter(); else { if (lowPower && cur.duration > 600 && !confirm(`This track is ${Math.round(cur.duration / 60)} minutes long. Transcribing it on a phone takes a long time and can make the app slow. It works best on a computer, or you can paste your written script in Settings. Transcribe here anyway?`)) return; enqueueTranscribe(cur); } };
 function prog(p) { $('prog').style.display = p == null ? 'none' : 'block'; $('prog').firstChild.style.width = (p || 0) + '%'; }
 // automatic transcription, like Voice Memos: every new memo joins a queue and is transcribed in the background
+// phones and small tablets: transcribing a long track by itself can freeze the app, so only short ones run automatically
+const lowPower = matchMedia('(pointer:coarse)').matches || (navigator.deviceMemory && navigator.deviceMemory <= 4);
 function enqueueTranscribe(t, auto, force) {
   if (!t || !isOwn(t) || (t.words.length && !force) || txing === t || txQueue.includes(t)) return;
+  if (auto && (t._txFailed || (lowPower && t.duration > 600))) return;
   txQueue.push(t); renderLib(); updateMain(); pumpTx(auto);
 }
 async function pumpTx(auto) {
@@ -691,12 +694,13 @@ function transcribe(t, auto) {
     const pg = p => { if (here()) prog(p); };
     let fake = null;
     const finish = () => { clearInterval(fake); t._txMsg = ''; pg(null); resolve(); };
-    const fail = msg => { finish(); if (here()) status('Transcription failed (' + msg + '). Press TRANSCRIBE to try again. The first run needs internet to download the speech model.', true); else toast(`Could not transcribe "${t.title}": ${msg}`, true); };
+    const fail = msg => { t._txFailed = true; finish(); if (here()) status('Transcription failed (' + msg + '). Press TRANSCRIBE to try again. The first run needs internet to download the speech model.', true); else toast(`Could not transcribe "${t.title}": ${msg}`, true); };
     try {
       st('Preparing audio for the transcript…'); pg(3);
-      const ab = await decode(await getBlob(t));
-      const off = new OfflineAudioContext(1, Math.ceil(ab.duration * 16000), 16000); const s = off.createBufferSource(); s.buffer = ab; s.connect(off.destination); s.start();
-      const pcm = (await off.startRendering()).getChannelData(0);
+      // decode straight to 16 kHz mono: a fraction of the memory of full quality, so phones cope better
+      const ab = await new OfflineAudioContext(1, 16000, 16000).decodeAudioData(await (await getBlob(t)).arrayBuffer());
+      let pcm = ab.getChannelData(0);
+      if (ab.numberOfChannels > 1) { const r = ab.getChannelData(1), m = new Float32Array(pcm.length); for (let i = 0; i < m.length; i++) m[i] = (pcm[i] + r[i]) / 2; pcm = m; } else pcm = pcm.slice();
       if (!worker) worker = new Worker(URL.createObjectURL(new Blob([workerSrc], { type: 'text/javascript' })), { type: 'module' });
       const files = {};
       worker.onmessage = e => {
@@ -900,13 +904,8 @@ async function cvRun(addToLib) {
 
 
 // ---------- repeat: off, the whole track, or the current chapter ----------
-let repeatMode = localStorage.getItem('mp.repeat') || 'off';
-function setRepeat(v) {
-  repeatMode = v; localStorage.setItem('mp.repeat', v); audio.loop = v === 'track' && !pl;
-  document.querySelectorAll('#repeat button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
-}
-document.querySelectorAll('#repeat button').forEach(b => b.onclick = () => setRepeat(b.dataset.v));
-setRepeat(repeatMode);
+const repeatMode = 'off'; // repeat options were removed at Kheron's request (2026-11-05)
+localStorage.removeItem('mp.repeat'); audio.loop = false;
 
 // ---------- offline: memos whose audio is saved on this device ----------
 let offline = new Set();
@@ -972,7 +971,7 @@ $('peDel').onclick = () => { if (!confirm(`Delete the playlist "${editPl.name}"?
 $('peClose').onclick = () => $('plEdit').classList.remove('open');
 ['plDlg', 'plEdit'].forEach(id => $(id).addEventListener('click', e => { if (e.target.id === id) $(id).classList.remove('open'); }));
 async function startPlaylist(p, i) { pl = { p, i }; audio.loop = false; await playItem(); }
-function stopPlaylist() { if (!pl) return; pl = null; audio.loop = repeatMode === 'track'; updatePlNow(); renderLib(); }
+function stopPlaylist() { if (!pl) return; pl = null; audio.loop = false; updatePlNow(); renderLib(); }
 async function playItem() {
   const { p, i } = pl, it = p.items[i]; const t = tracks.find(x => x.id === it.m);
   updatePlNow(); renderLib();
@@ -1019,8 +1018,7 @@ function showRepBar(i) {
   if (!cur || !cur.words.length) return; const [j, k] = sentenceAt(i); if (rep) stopRep();
   const b = $('repbar'); b.hidden = false; b.dataset.j = j; b.dataset.k = k;
   const fv = favIndex(j, k) >= 0;
-  b.innerHTML = `<button type="button" class="star${fv ? ' on' : ''}" aria-label="${fv ? 'Remove from favourites' : 'Add to favourites'}">${fv ? '★' : '☆'}</button><span>Repeat</span><button type="button" data-n="3">3×</button><button type="button" data-n="5">5×</button><button type="button" data-n="10">10×</button><button type="button" class="x" aria-label="Close">✕</button>`;
-  b.querySelectorAll('[data-n]').forEach(x => x.onclick = () => startRep(j, k, +x.dataset.n));
+  b.innerHTML = `<button type="button" class="star${fv ? ' on' : ''}">${fv ? '★ Saved to favourites' : '☆ Save to favourites'}</button><button type="button" class="x" aria-label="Close">✕</button>`;
   b.querySelector('.x').onclick = stopRep;
   b.querySelector('.star').onclick = () => { toggleFav(j, k); showRepBar(i); };
   clearTimeout(repHide); repHide = setTimeout(() => { if (!rep) b.hidden = true; }, 6000);
@@ -1067,8 +1065,11 @@ function loadFavs() { try { favs = JSON.parse(localStorage.getItem(favKey())) ||
 const favIndex = (j, k) => cur ? favs.findIndex(f => f.m === cur.id && f.j === j && f.k === k) : -1;
 function toggleFav(j, k) {
   const x = favIndex(j, k);
-  if (x >= 0) { favs.splice(x, 1); toast('Removed from favourites.', false, 1800); }
-  else { const W = cur.words; favs.unshift({ m: cur.id, j, k, t0: sentStart(j), t1: W[k].end + 0.35, text: W.slice(j, k + 1).map(w => w.text).join(' ') }); toast('Saved to Favourite lines ★', false, 1800); }
+  if (x >= 0) { const f = favs.splice(x, 1)[0]; toast(f.pp ? 'Removed from favourites. It stays in your Progress Pad Quotes.' : 'Removed from favourites.', false, 2500); }
+  else {
+    const W = cur.words, f = { m: cur.id, j, k, t0: sentStart(j), t1: W[k].end + 0.35, text: W.slice(j, k + 1).map(w => w.text).join(' ') };
+    favs.unshift(f); toast('Saved to Favourite lines ★', false, 1800); quoteToPad(f, cur.title);
+  }
   localStorage.setItem(favKey(), JSON.stringify(favs)); markFavs(); renderLib();
 }
 function markFavs() {
@@ -1183,4 +1184,12 @@ function importSharedPlaylist() {
   if (!p) { p = { id: crypto.randomUUID(), name: o.n || 'Shared playlist', items }; playlists.push(p); savePlaylists(); }
   const miss = (o.i || []).length - items.length;
   toast(`Playlist "${p.name}" added${miss ? ` (${miss} item${miss === 1 ? '' : 's'} not shared with you)` : ''}. Tap ▶ in your library to play.`, false, 6000);
+}
+
+// each favourite line also goes into the Quotes section of today's Progress Pad
+async function quoteToPad(f, title) {
+  if (!navigator.onLine) { toast('Saved here. It will not reach Progress Pad Quotes while you are offline.', true); return; }
+  const { data, error } = await supabase.from('writing_entries').insert({ user_id: user.id, on_date: dayOf(), kind: 'quotes', title: f.text.slice(0, 500), notes: `From "${title}" on MemoPad` }).select('id').single();
+  if (error) { toast('Saved here, but it could not reach Progress Pad: ' + error.message, true); return; }
+  f.pp = data.id; localStorage.setItem(favKey(), JSON.stringify(favs)); toast('Saved to favourites and your Progress Pad Quotes ★', false, 2500);
 }

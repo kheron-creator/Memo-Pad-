@@ -166,6 +166,7 @@ async function refreshStorage() {
 // ---------- adding audio ----------
 $('drop').onclick = e => { if (e.target.id !== 'chooseBtn') $('file').click(); };
 $('chooseBtn').onclick = $('browse').onclick = () => $('file').click();
+$('libSearchBtn').onclick = () => { const w = $('libSearch'); w.hidden = !w.hidden; if (!w.hidden) $('libq').focus(); else if ($('libq').value) { $('libq').value = ''; renderLib(); } };
 $('file').onchange = e => { queueFiles([...e.target.files]); e.target.value = ''; };
 let dragN = 0;
 addEventListener('dragenter', e => { e.preventDefault(); dragN++; document.body.classList.add('dragging'); $('drop').classList.add('over'); });
@@ -263,22 +264,28 @@ function renderLib() {
   const q = norm($('libq').value.trim());
   const ok = t => (!catFilter || t.category === catFilter) && (!q || norm(t.title).includes(q) || textOf(t).includes(q));
   const mine = tracks.filter(t => isOwn(t) && ok(t)), shared = tracks.filter(t => !isOwn(t) && ok(t));
+  const when = ms => { const d = new Date(ms), now = new Date(), day = 864e5, d0 = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    if (ms >= d0) return `${pad(d.getHours())}:${pad(d.getMinutes())}`; if (ms >= d0 - day) return 'Yesterday';
+    if (ms >= d0 - 6 * day) return d.toLocaleDateString(undefined, { weekday: 'long' }); return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' }); };
+  const txIcon = '<svg class="txi" viewBox="0 0 28 28" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M5 6h18a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-9l-5 4v-4H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z"/><path d="M10 11.5h2.5v2.5c0 1.4-.8 2.3-2 2.6M15.5 11.5H18v2.5c0 1.4-.8 2.3-2 2.6" stroke-width="1.8"/></svg>';
   const section = (title, list) => {
-    if (!list.length) return; const h = document.createElement('h4'); h.textContent = title; L.appendChild(h);
+    if (!list.length) return; if (title) { const h = document.createElement('h4'); h.textContent = title; L.appendChild(h); }
     list.forEach(t => {
-      const d = document.createElement('div'); d.className = 'item' + (t === cur ? ' on' : '') + (t === cur && !audio.paused ? ' playing' : '');
-      const n = t.chapters.length;
-      d.innerHTML = `<span class="dot"></span><div style="min-width:0;flex:1"><div class="nm">${esc(t.title)}</div><div class="mt"><span>${short(t.duration)}</span><span>· ${n} chapter${n === 1 ? '' : 's'}</span>${t.category ? `<span class="cat">${esc(t.category)}</span>` : ''}${isOwn(t) && t.is_public ? '<span class="sh">· public</span>' : isOwn(t) && t.is_shared ? '<span class="sh">· shared</span>' : ''}${offline.has(t.id) ? '<span class="sh">· offline</span>' : ''}${txing === t ? '<span class="sh">· transcribing…</span>' : txQueue.includes(t) ? '<span class="sh">· waiting to transcribe</span>' : ''}</div></div>`;
+      const d = document.createElement('div'); d.className = 'item vm' + (t === cur ? ' on' : '') + (t === cur && !audio.paused ? ' playing' : '');
+      const tags = [t.category ? `<span class="cat">${esc(t.category)}</span>` : '', isOwn(t) && t.is_public ? '<span class="sh">public</span>' : '', offline.has(t.id) ? '<span class="sh">offline</span>' : '', txing === t ? '<span class="sh">transcribing…</span>' : txQueue.includes(t) ? '<span class="sh">waiting</span>' : ''].join('');
+      d.innerHTML = `<div class="vmain"><div class="nm">${esc(t.title)}</div><div class="mt"><span>${when(t.added)}</span>${t.words.length ? txIcon : ''}${tags}</div></div><div class="vdur">${short(t.duration)}</div>`;
       d.onclick = () => { stopPlaylist(); select(t); closeLib(); };
-      { const a = document.createElement('button'); a.className = 'idel iadd'; a.title = 'Add to a playlist'; a.setAttribute('aria-label', 'Add ' + t.title + ' to a playlist'); a.textContent = '+'; a.onclick = e => { e.stopPropagation(); openAddPl({ m: t.id, label: t.title }); }; d.appendChild(a); }
-      if (isOwn(t)) { const x = document.createElement('button'); x.className = 'idel'; x.title = 'Delete'; x.setAttribute('aria-label', 'Delete ' + t.title); x.innerHTML = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>'; x.onclick = e => { e.stopPropagation(); deleteTrack(t); }; d.appendChild(x); }
+      const acts = document.createElement('div'); acts.className = 'vacts';
+      { const a = document.createElement('button'); a.className = 'idel iadd'; a.title = 'Add to a playlist'; a.setAttribute('aria-label', 'Add ' + t.title + ' to a playlist'); a.textContent = '+'; a.onclick = e => { e.stopPropagation(); openAddPl({ m: t.id, label: t.title }); }; acts.appendChild(a); }
+      if (isOwn(t)) { const x = document.createElement('button'); x.className = 'idel'; x.title = 'Delete'; x.setAttribute('aria-label', 'Delete ' + t.title); x.innerHTML = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>'; x.onclick = e => { e.stopPropagation(); deleteTrack(t); }; acts.appendChild(x); }
+      d.appendChild(acts);
       L.appendChild(d);
     });
   };
+  section('', mine);
+  section('Shared with you', shared);
   renderFavs(L, q);
   renderPlaylists(L, q);
-  section('Your affirmations', mine);
-  section('Shared in MemoPad', shared);
   if (!mine.length && !shared.length && !L.querySelector('.pl, .fav')) L.innerHTML = `<div class="none">${tracks.length ? 'Nothing matches.' : 'No memos yet. Add your first one above.'}</div>`;
 }
 function showEmpty() { cur = null; $('emptycard').style.display = 'flex'; setSrc(null); $('clist').innerHTML = ''; drawOverview(); }
@@ -1139,7 +1146,16 @@ function streaks() {
   return { cur, best: Math.max(best, cur) };
 }
 const mins = s => s < 3600 ? `${Math.round(s / 60)} min` : `${(s / 3600).toFixed(1)} h`;
-function statLine() { const s = streaks(), today = stats.days[dayOf()] || 0; $('statTxt').textContent = `${s.cur ? s.cur + '-day streak · ' : ''}${mins(today)} today`; }
+const GOAL = 20 * 60; // daily listening goal shown in the ring
+function statLine() {
+  const s = streaks(), today = stats.days[dayOf()] || 0, f = Math.min(1, today / GOAL), C = 2 * Math.PI * 26;
+  $('ringArc').setAttribute('stroke-dasharray', `${(f * C).toFixed(1)} ${C.toFixed(1)}`); $('ringTxt').textContent = Math.round(today / 60);
+  $('statTxt').textContent = `${Math.round(today / 60)} of ${GOAL / 60} min today`;
+  $('statSub').textContent = s.cur ? `${s.cur}-day streak · best ${s.best}` : 'Listen a minute to start a streak';
+  const days = []; const d = new Date(); d.setDate(d.getDate() - 6); for (let i = 0; i < 7; i++) { days.push(stats.days[dayOf(d)] || 0); d.setDate(d.getDate() + 1); }
+  const mx = Math.max(GOAL, ...days);
+  $('miniBars').innerHTML = days.map((v, i) => `<i class="${i === 6 ? 'now' : ''}" style="height:${Math.max(v ? 8 : 4, v / mx * 100)}%"></i>`).join('');
+}
 function openDash() {
   localStorage.setItem(statKey(), JSON.stringify(stats));
   const s = streaks(), today = stats.days[dayOf()] || 0, all = Object.values(stats.days).reduce((a, b) => a + b, 0);

@@ -30,7 +30,7 @@ export function trackToRow(t, withPeaks) {
   const row = {
     title: (t.title || 'Untitled').slice(0, 200), category: t.category || null, description: t.description || null,
     duration_s: t.duration ? r3(t.duration) : null,
-    words: t.words.map(w => ({ text: w.text, start: r3(w.start), end: r3(w.end) })),
+    words: t.words.map(w => ({ text: w.text, start: r3(w.start), end: r3(w.end), ...(w.p ? { p: 1 } : {}) })),
     chapters: t.chapters.map(c => ({ t: r3(c.t), title: c.title })),
     is_shared: !!t.is_shared,
   };

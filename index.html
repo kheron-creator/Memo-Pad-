@@ -114,7 +114,7 @@
       <h5 style="margin-top:10px">Speech model</h5>
       <div class="seg" id="model"><button data-v="Xenova/whisper-tiny.en">Fast</button><button data-v="Xenova/whisper-base.en" class="on">Balanced</button><button data-v="Xenova/whisper-small.en">Best</button></div>
       <button class="act" id="convBtn">Convert or compress audio</button>
-      <button class="act own" id="pasteBtn">Paste my own script</button>
+      <button class="act own" id="pasteBtn">Paste your written script</button>
       <button class="act own" id="srtBtn">Import transcript (SRT)</button>
       <button class="act own" id="rechapBtn">Rebuild chapters from transcript</button>
       <button class="act" id="expTxt">Download transcript (.txt)</button>
@@ -141,6 +141,14 @@
   <div class="catpick" id="catPick"></div>
   <div class="newcat"><input id="newCat" placeholder="New category" maxlength="30"><button id="newCatGo" type="button">Add</button></div>
   <div class="acts"><button id="catClose" type="button">CLOSE</button></div>
+</div></div>
+
+<!-- Written script -->
+<div class="cv" id="scriptDlg"><div class="box">
+  <h3>Paste your written script</h3>
+  <p class="lead">Your exact words become the transcript, timed to the voice. Put each heading on its own line (for example "An organised kitchen and meals 201–250") and it becomes a chapter.</p>
+  <textarea id="scriptTxt" class="scripttxt" placeholder="Paste the script here" spellcheck="false"></textarea>
+  <div class="acts"><button id="scriptClose" type="button">CLOSE</button><button class="go" id="scriptGo" type="button">USE THIS SCRIPT</button></div>
 </div></div>
 
 <!-- Converter -->

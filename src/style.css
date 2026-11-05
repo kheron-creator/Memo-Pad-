@@ -228,3 +228,6 @@ body.dragging .card::after{content:'Drop to add';position:absolute;inset:10px;bo
   .chap .del{opacity:1}
   .pop{right:12px;left:12px;width:auto}
 }
+
+.scripttxt{width:100%;min-height:42vh;background:#101013;border:1px solid #333;border-radius:14px;padding:12px 14px;font-family:var(--body);font-size:16px;line-height:1.45;color:#fff;outline:none;resize:vertical}
+.scripttxt:focus{border-color:#666}

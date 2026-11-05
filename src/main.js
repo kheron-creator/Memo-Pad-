@@ -4,6 +4,7 @@ import {
   rowToTrack, trackToRow, cacheAll, cachePut, cacheDel, audioGet, audioPut, cacheClear,
 } from './cloud.js';
 import { transcriptChapters } from './chapters.js';
+import { parseScript, alignToAsr, spreadOverVoice, scriptChapters } from './script.js';
 
 const $ = id => document.getElementById(id);
 const audio = $('audio');
@@ -152,7 +153,7 @@ async function addFile(f, preCompressed) {
     let out = f;
     if (!preCompressed) {
       status(`Compressing ${mb(before)}…`);
-      const p = settingsFor('standard', ab.duration, 48);
+      const p = settingsFor('standard', ab.duration, 49);
       const blob = await compress(ab, p, { trim: $('cvTrim').checked, norm: $('cvNorm').checked, fmt: 'mp3' }, x => { prog(5 + 70 * x); status(`Compressing ${mb(before)}… ${Math.round(x * 100)}%`); });
       out = new File([blob], base + '.mp3', { type: 'audio/mpeg' });
       if (out.size >= before && /mpeg|mp3/.test(f.type + f.name)) { out = f; }
@@ -459,12 +460,12 @@ function renderTranscript() {
       : `<div class="empty">No transcript for this memo yet.</div>`;
     return;
   }
-  const chStarts = cur.chapters.map(c => c.t); let ci = 0, p = null;
+  const chStarts = cur.chapters.map(c => c.t); let ci = 0, p = null; const hasLines = cur.words.some(w => w.p);
   const frag = document.createDocumentFragment();
   cur.words.forEach((w, i) => {
     const prev = cur.words[i - 1];
     while (ci < chStarts.length && chStarts[ci] <= w.start + 0.25) { const h = document.createElement('div'); h.className = 'ch'; const c = cur.chapters[ci]; h.textContent = `${ci + 1}. ${c.title}`; h.onclick = () => audio.currentTime = c.t; frag.appendChild(h); p = null; ci++; }
-    if (!p || (prev && w.start - prev.end > 1.1 && /[.!?]$/.test(prev.text))) { p = document.createElement('p'); frag.appendChild(p); }
+    if (!p || (hasLines ? w.p : (prev && w.start - prev.end > 1.1 && /[.!?]$/.test(prev.text)))) { p = document.createElement('p'); frag.appendChild(p); }
     const s = document.createElement('span'); s.className = 'w'; s.textContent = w.text; s.onclick = () => { audio.currentTime = Math.max(0, w.start - 0.05); };
     p.appendChild(s); p.appendChild(document.createTextNode(' ')); wordEls.push(s);
   });
@@ -542,8 +543,8 @@ function updateMain() {
 $('mainBtn').onclick = () => { if (!cur || !isOwn(cur)) return; if (cur.words.length) addChapter(); else enqueueTranscribe(cur); };
 function prog(p) { $('prog').style.display = p == null ? 'none' : 'block'; $('prog').firstChild.style.width = (p || 0) + '%'; }
 // automatic transcription, like Voice Memos: every new memo joins a queue and is transcribed in the background
-function enqueueTranscribe(t, auto) {
-  if (!t || !isOwn(t) || t.words.length || txing === t || txQueue.includes(t)) return;
+function enqueueTranscribe(t, auto, force) {
+  if (!t || !isOwn(t) || (t.words.length && !force) || txing === t || txQueue.includes(t)) return;
   txQueue.push(t); renderLib(); updateMain(); pumpTx(auto);
 }
 async function pumpTx(auto) {
@@ -577,7 +578,7 @@ function transcribe(t, auto) {
         if (m.type === 'done') {
           let list = []; if (m.mode === 'word') list = m.chunks.map(c => ({ text: c.text.trim(), start: c.timestamp[0], end: c.timestamp[1] ?? c.timestamp[0] + 0.3 }));
           else m.chunks.forEach(c => list.push(...spread(c.text, c.timestamp[0], c.timestamp[1] ?? c.timestamp[0] + 3)));
-          setWords(t, list.filter(w => w.text && !/^[\[(].*[\])]$/.test(w.text)));
+          setWords(t, list.filter(w => w.text && !/^[\[(].*[\])]$/.test(w.text)), true);
           finish();
           const msg = t.words.length ? `Transcript ready: ${t.words.length} words in ${t.chapters.length} chapters ✓` : 'No speech found in this track.';
           if (here()) { status(msg); setTimeout(() => { if (!t._txMsg) status(''); }, 4000); if (!auto) setMode('tx'); }
@@ -590,21 +591,42 @@ function transcribe(t, auto) {
     } catch (err) { fail(err.message || String(err)); }
   });
 }
-function setWords(t, list) {
+// fromAsr: words came from speech recognition. If the memo has a written script, use the script's words, timed to these.
+function setWords(t, list, fromAsr) {
   if (!isOwn(t)) return;
-  t.words = list.map(w => ({ text: w.text, start: +w.start, end: +w.end })).sort((a, b) => a.start - b.start); t._text = null; t.chapters = transcriptChapters(t.words); save(t, true).catch(() => {}); renderLib();
+  let words = list.map(w => ({ text: w.text, start: +w.start, end: +w.end, ...(w.p ? { p: 1 } : {}) })).sort((a, b) => a.start - b.start);
+  let chapters = null;
+  if (fromAsr && t.description) {
+    const sc = parseScript(t.description);
+    if (sc.words.length) { words = alignToAsr(sc.words, words).map(w => ({ text: w.text, start: w.start, end: w.end, ...(w.p ? { p: 1 } : {}) })); chapters = scriptChapters(words, sc.headings); }
+  }
+  t.words = words; t._text = null; t.chapters = chapters || transcriptChapters(t.words); save(t, true).catch(() => {}); renderLib();
   if (cur === t) { renderChapters(); renderTranscript(); drawOverview(); updateMain(); }
+}
+// paste the written script: exact words, timed to the voice; heading lines become chapters
+function applyScript(t, text) {
+  const sc = parseScript(text); if (!sc.words.length) return;
+  t.description = text.trim();
+  let timed, how;
+  if (t.words.length) { timed = alignToAsr(sc.words, t.words); how = 'matched to the voice'; }
+  else { timed = spreadOverVoice(sc.words, t.peaks, t.duration, BPS); how = 'placed roughly for now. They will be matched to the voice when the transcript finishes'; }
+  t.words = timed.map(w => ({ text: w.text, start: w.start, end: w.end, ...(w.p ? { p: 1 } : {}) })); t._text = null;
+  t.chapters = scriptChapters(t.words, sc.headings) || transcriptChapters(t.words);
+  save(t, true).catch(() => {}); renderLib();
+  if (cur === t) { renderChapters(); renderTranscript(); drawOverview(); updateMain(); setMode('tx'); }
+  toast(`Script added: ${t.words.length} words in ${t.chapters.length} chapters, ${how}.`, false, 6000);
+  if (!sc.words.length || how.startsWith('placed')) enqueueTranscribe(t, true, true); // get real timings from the voice
 }
 function spread(text, a, b) { const ws = text.trim().split(/\s+/).filter(Boolean), wt = ws.map(w => w.length + 2), tot = wt.reduce((x, y) => x + y, 0) || 1; let t = a; return ws.map((w, i) => { const d = (b - a) * wt[i] / tot; const o = { text: w, start: t, end: t + d * 0.9 }; t += d; return o; }); }
 
 // paste your own script (spread over speech, using the waveform to skip pauses)
 $('pasteBtn').onclick = () => {
-  if (!cur || !isOwn(cur)) return; const txt = prompt('Paste the script of this affirmation. MemoPad will spread the words over the speaking parts of the audio.'); if (!txt || !txt.trim()) return;
-  const ws = txt.trim().split(/\s+/); const p = cur.peaks; if (!p) { setWords(cur, spread(txt, 0, cur.duration)); return; }
-  const voiced = []; for (let i = 0; i < p.length; i++) if (p[i] > 0.1) voiced.push(i / BPS); if (!voiced.length) { setWords(cur, spread(txt, 0, cur.duration)); return; }
-  const wt = ws.map(w => w.length + 2), tot = wt.reduce((a, b) => a + b, 0); let acc = 0; const list = ws.map((w, i) => { const f0 = acc / tot; acc += wt[i]; const f1 = acc / tot; return { text: w, start: voiced[Math.floor(f0 * (voiced.length - 1))], end: voiced[Math.floor(f1 * (voiced.length - 1))] }; });
-  setWords(cur, list); setMode('tx');
+  if (!cur || !isOwn(cur)) return; $('pop').classList.remove('open');
+  $('scriptTxt').value = cur.description || ''; $('scriptDlg').classList.add('open'); setTimeout(() => $('scriptTxt').focus(), 50);
 };
+$('scriptGo').onclick = () => { const v = $('scriptTxt').value; if (!v.trim()) { $('scriptTxt').focus(); return; } $('scriptDlg').classList.remove('open'); applyScript(cur, v); };
+$('scriptClose').onclick = () => $('scriptDlg').classList.remove('open');
+$('scriptDlg').onclick = e => { if (e.target.id === 'scriptDlg') $('scriptDlg').classList.remove('open'); };
 const tsec = s => { const m = s.trim().replace(',', '.').split(':').map(Number); return m.length === 3 ? m[0] * 3600 + m[1] * 60 + m[2] : m[0] * 60 + m[1]; };
 function importSRT(txt) {
   if (!cur) return alert('Add the audio first, then the transcript.'); if (!isOwn(cur)) return alert('This memo is shared with you, so it is play only.');

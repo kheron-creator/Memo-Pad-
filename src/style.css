@@ -315,3 +315,35 @@ body.dragging .card::after{content:'Drop to add';position:absolute;inset:10px;bo
 .pubrow{background:#1b1b20;border-radius:14px;padding:10px 12px;margin:0 0 10px;display:flex;justify-content:space-between;align-items:center;gap:10px}
 .pubrow[hidden]{display:none}
 .pubrow small{color:var(--mute);font-weight:600;font-size:13px}
+
+/* ---------- computer layout: roomier panels, wider and taller player ---------- */
+@media (min-width:1181px){
+  .app{grid-template-columns:minmax(320px,380px) minmax(560px,940px) minmax(320px,380px);gap:28px;padding:28px}
+  .side,.chaps{padding:26px 24px;border-radius:30px}
+  .brand b{font-size:22px}
+  .item{padding:14px 16px}
+  .item .nm{font-size:15px}
+  .lib{gap:10px}
+  .clist{gap:8px}
+  .chap{padding:12px 16px}
+  .chap .t{font-size:16px}
+  .title{padding-top:6px}
+  .view{margin-top:10px}
+  #tx{font-size:27px;line-height:1.45;padding:34px 60px 110px}
+  .clock{font-size:46px;margin:10px 0 4px}
+  .ctrls{margin:8px 0 12px}
+  .bottom{padding-bottom:20px}
+}
+@media (min-width:821px) and (max-width:1180px){
+  .app{grid-template-columns:minmax(420px,760px) minmax(280px,340px)}
+  #tx{padding:30px 44px 110px}
+}
+/* read-along tools, blackout */
+.rtools{position:absolute;top:calc(16px + env(safe-area-inset-top));left:18px;display:flex;gap:8px;z-index:2}
+.rtools button{border:0;background:#ffffff12;border-radius:20px;padding:10px 14px;font-weight:700;font-size:13px;color:#ddd}
+.reader .rch{padding:0 230px}
+@media (max-width:640px){.reader .rch{top:calc(76px + env(safe-area-inset-top));padding:0 20px}}
+.blackout{position:fixed;inset:0;background:#000;z-index:80;cursor:none}
+.blackout[hidden]{display:none}
+.bhint{position:absolute;left:0;right:0;bottom:calc(40px + env(safe-area-inset-bottom));text-align:center;color:#555;font-size:15px;font-weight:600;opacity:0;transition:opacity .4s}
+.bhint.show{opacity:1}

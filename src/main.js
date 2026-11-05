@@ -1213,3 +1213,34 @@ async function quoteToPad(f, title) {
   if (error) { toast('Saved here, but it could not reach Progress Pad: ' + error.message, true); return; }
   f.pp = data.id; localStorage.setItem(favKey(), JSON.stringify(favs)); toast('Saved to favourites and your Progress Pad Quotes ★', false, 2500);
 }
+
+
+// ---------- true full screen and blackout ----------
+const fsEl = () => document.fullscreenElement || document.webkitFullscreenElement;
+async function goFull(el) { try { await (el.requestFullscreen ? el.requestFullscreen({ navigationUI: 'hide' }) : el.webkitRequestFullscreen?.()); } catch {} }
+function exitFull() { if (fsEl()) (document.exitFullscreen || document.webkitExitFullscreen)?.call(document); }
+$('rFull').onclick = () => fsEl() ? exitFull() : goFull($('reader'));
+document.addEventListener('fullscreenchange', () => { $('rFull').textContent = fsEl() ? 'Exit full screen' : 'Full screen'; });
+let blackWake = null, hintT = 0;
+async function openBlackout() {
+  $('pop').classList.remove('open'); const B = $('blackout'); B.hidden = false; showHint();
+  goFull(B); try { blackWake = await navigator.wakeLock?.request('screen'); } catch { blackWake = null; }
+}
+function closeBlackout() { $('blackout').hidden = true; exitFull(); try { blackWake && blackWake.release(); } catch {} blackWake = null; }
+function showHint() { const h = $('bHint'); h.classList.add('show'); clearTimeout(hintT); hintT = setTimeout(() => h.classList.remove('show'), 2500); }
+let lastTap = 0;
+$('blackout').addEventListener('click', () => { const n = Date.now(); if (n - lastTap < 400) closeBlackout(); else showHint(); lastTap = n; });
+$('blackBtn').onclick = openBlackout; $('rBlack').onclick = openBlackout;
+addEventListener('keydown', e => { if (e.key === 'Escape' && !$('blackout').hidden) closeBlackout(); });
+document.addEventListener('fullscreenchange', () => { if (!fsEl() && !$('blackout').hidden) { /* leaving full screen keeps the black screen; double tap to close */ } });
+
+// ---------- phone version: install to the home screen ----------
+let installEvt = null;
+const standalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; $('installBtn').hidden = false; });
+const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+if (isIOS && !standalone()) $('installBtn').hidden = false;
+$('installBtn').onclick = async () => {
+  if (installEvt) { installEvt.prompt(); const r = await installEvt.userChoice; if (r.outcome === 'accepted') $('installBtn').hidden = true; installEvt = null; return; }
+  toast('In Safari, tap the Share button, then "Add to Home Screen". MemoPad then opens full screen like an app.', false, 9000);
+};

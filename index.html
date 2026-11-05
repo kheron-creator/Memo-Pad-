@@ -121,6 +121,8 @@
       <div class="seg" id="model"><button data-v="Xenova/whisper-tiny.en">Fast</button><button data-v="Xenova/whisper-base.en" class="on">Balanced</button><button data-v="Xenova/whisper-small.en">Best</button></div>
       <button class="act" id="offBtn">Save for offline listening</button>
       <button class="act" id="readBtn">Read-along mode</button>
+      <button class="act" id="blackBtn">Blackout screen</button>
+      <button class="act" id="installBtn" hidden>Install MemoPad on this device</button>
       <h5>Progress Pad</h5>
       <div class="row"><span>Add finished listens to my Done list</span><input type="checkbox" id="ppLog" checked></div>
       <div class="row"><span>Count them toward a trigger</span><select id="ppTrig" class="ppsel"><option value="">None</option></select></div>
@@ -221,8 +223,10 @@
   <div class="acts"><button id="peDel" type="button">DELETE</button><button id="peShare" type="button">SHARE</button><button class="go" id="pePlay" type="button">PLAY</button></div>
   <div class="acts" style="margin-top:8px"><button id="peClose" type="button">CLOSE</button></div>
 </div></div>
+<div class="blackout" id="blackout" hidden><div class="bhint" id="bHint">Audio keeps playing. Double tap to come back.</div></div>
 <div class="reader" id="reader" hidden>
   <button class="rclose" id="rClose" aria-label="Close read-along">✕</button>
+  <div class="rtools"><button id="rFull" type="button">Full screen</button><button id="rBlack" type="button">Blackout</button></div>
   <div class="rch" id="rCh"></div>
   <div class="rtext" id="rText"></div>
   <div class="rctl"><button id="rPrev" aria-label="Previous affirmation">‹</button><button class="rplay" id="rPlay" aria-label="Play or pause"></button><button id="rNext" aria-label="Next affirmation">›</button></div>

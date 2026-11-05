@@ -101,20 +101,34 @@ async function start(u) {
   if (sessionStorage.getItem('mp.deep') && !openDeep()) { sessionStorage.removeItem('mp.deep'); toast('That memo is not shared with you, or it was removed.', true); }
   refreshStorage();
 }
+// light list first; the big parts (transcript, waveform, script) only for memos that changed since this device saw them
+const LIGHT = 'id,user_id,title,category,audio_path,duration_s,chapters,is_shared,is_public,created_at,updated_at';
 async function refresh() {
-  const { data, error } = await supabase.from(TABLE).select('*').order('created_at', { ascending: false });
+  const { data, error } = await supabase.from(TABLE).select(LIGHT).order('created_at', { ascending: false });
   if (error) { if (!tracks.length) status('Offline. Showing what is saved on this device.'); return; }
   const prev = new Map(tracks.map(t => [t.id, t]));
-  const fresh = data.map(r => { const t = rowToTrack(r); const p = prev.get(t.id); if (p) { t.blob = p.blob; if (!t.peaks && p.peaks) t.peaks = p.peaks; } return t; });
+  const need = data.filter(r => { const p = prev.get(r.id); return !p || p.updated_at !== r.updated_at; }).map(r => r.id);
+  const heavy = new Map();
+  if (need.length) {
+    const h = await supabase.from(TABLE).select('id,words,peaks,description').in('id', need);
+    if (h.error) { if (!tracks.length) status('Could not load your memos. Check your connection.', true); return; }
+    h.data.forEach(r => heavy.set(r.id, r));
+  }
+  const changed = new Set(need);
+  const fresh = data.map(r => {
+    const p = prev.get(r.id);
+    if (!changed.has(r.id)) { const t = rowToTrack({ ...r, words: p.words, peaks: null, description: p.description }); t.peaks = p.peaks; t.blob = p.blob; return t; }
+    const t = rowToTrack({ ...r, ...heavy.get(r.id) }); if (p) { t.blob = p.blob; if (!t.peaks && p.peaks) t.peaks = p.peaks; } return t;
+  });
   // keep the selected object if it still exists, so playback isn't interrupted
   const curId = cur && cur.id;
   if (cur) { const f = fresh.find(t => t.id === curId); if (f && f.updated_at === cur.updated_at) fresh[fresh.indexOf(f)] = cur; else if (f) { Object.assign(cur, f); fresh[fresh.indexOf(f)] = cur; } }
   const gone = tracks.filter(t => !fresh.some(f => f.id === t.id));
   gone.forEach(t => cacheDel(t.id));
-  tracks = fresh; tracks.forEach(t => cachePut(t));
+  tracks = fresh; tracks.forEach(t => { if (changed.has(t.id)) cachePut(t); });
   renderCats(); renderLib();
   if (!curId || !tracks.some(t => t.id === curId)) { cur = null; tracks[0] ? select(tracks[0]) : showEmpty(); }
-  else { renderChapters(); renderTranscript(); drawOverview(); updateMain(); }
+  else if (changed.has(curId)) { renderChapters(); renderTranscript(); drawOverview(); updateMain(); }
 }
 
 // ---------- storage meter ----------
@@ -292,7 +306,7 @@ async function loadAudio(t) {
   if (cur !== t) return;
   if (error) { status('Could not load this audio. Check your connection.', true); return; }
   setSrc(data.signedUrl); audio.playbackRate = speed(); resumeAt(t);
-  fetch(data.signedUrl).then(r => r.ok ? r.blob() : null).then(b => { if (b) { t.blob = b; keepOffline(t, b); } }).catch(() => {});
+  // the audio streams; the whole file is only downloaded when you choose Save for offline (saves data and keeps it quick)
 }
 // resume where you left off: each memo remembers its spot
 let skipResume = false;

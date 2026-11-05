@@ -93,10 +93,11 @@ async function start(u) {
   // instant: show the offline cache, then refresh from Supabase
   const cached = (await cacheAll()).filter(t => t.user_id === u.id || t.is_shared);
   tracks = cached.map(t => ({ ...t, peaks: t.peaks ? Float32Array.from(t.peaks) : null })).sort((a, b) => b.added - a.added);
-  loadPlaylists(); offline = new Set(await audioKeys());
-  renderCats(); renderLib(); if (tracks[0]) select(tracks[0]); else showEmpty();
+  loadPlaylists(); loadFavs(); offline = new Set(await audioKeys());
+  renderCats(); renderLib(); if (!openDeep()) { if (tracks[0]) select(tracks[0]); else showEmpty(); }
   requestAnimationFrame(loop);
   await refresh();
+  if (sessionStorage.getItem('mp.deep') && !openDeep()) { sessionStorage.removeItem('mp.deep'); toast('That memo is not shared with you, or it was removed.', true); }
   refreshStorage();
 }
 async function refresh() {
@@ -117,12 +118,29 @@ async function refresh() {
 
 // ---------- storage meter ----------
 let storageUsed = 0;
+let orphans = [];
+$('orphBtn').onclick = async () => {
+  // check again against the database before removing anything
+  const { data, error } = await supabase.from(TABLE).select('audio_path').eq('user_id', user.id);
+  if (error) { toast('Could not check your memos: ' + error.message, true); return; }
+  const used = new Set(data.map(r => r.audio_path));
+  const del = orphans.map(f => `${user.id}/${f.name}`).filter(p => !used.has(p));
+  if (!del.length) { refreshStorage(); return; }
+  const r = await supabase.storage.from(BUCKET).remove(del);
+  if (r.error) { toast('Could not remove them: ' + r.error.message, true); return; }
+  toast(`Removed ${del.length} leftover file${del.length === 1 ? '' : 's'}.`); refreshStorage();
+};
 async function refreshStorage() {
   let used = null; // add up my own audio files
   const l = await supabase.storage.from(BUCKET).list(user.id, { limit: 1000 });
   if (!l.error && Array.isArray(l.data)) used = l.data.reduce((a, f) => a + (f.metadata?.size || 0), 0);
   if (used == null) { $('storeTxt').textContent = 'Storage use is not available offline.'; return; }
   storageUsed = used;
+  // files with no memo (left behind by an upload that stopped half way), older than an hour
+  const hour = Date.now() - 3600e3, paths = new Set(tracks.map(t => t.audio_path)), pend = new Set([...pendingDel.keys()]);
+  orphans = (l.data || []).filter(f => f.id && !paths.has(`${user.id}/${f.name}`) && !pend.has(f.name.replace(/\.\w+$/, '')) && Date.parse(f.created_at || 0) < hour);
+  const ob = $('orphBtn'); ob.hidden = !orphans.length;
+  if (orphans.length) ob.textContent = `Remove ${orphans.length} leftover file${orphans.length === 1 ? '' : 's'} (${mb(orphans.reduce((a, f) => a + (f.metadata?.size || 0), 0))})`;
   const pct = used / FREE_STORAGE * 100, warn = pct >= 70;
   $('storeBar').style.width = Math.min(100, pct).toFixed(1) + '%'; $('storeBar').classList.toggle('warn', warn);
   $('storeTxt').textContent = `${mb(used)} of 1 GB used (${pct < 1 ? pct.toFixed(1) : Math.round(pct)}%)${warn ? ' · nearly full' : ''}`;
@@ -242,10 +260,11 @@ function renderLib() {
       L.appendChild(d);
     });
   };
+  renderFavs(L, q);
   renderPlaylists(L, q);
   section('Your affirmations', mine);
   section('Shared in MemoPad', shared);
-  if (!mine.length && !shared.length && !L.querySelector('.pl')) L.innerHTML = `<div class="none">${tracks.length ? 'Nothing matches.' : 'No memos yet. Add your first one above.'}</div>`;
+  if (!mine.length && !shared.length && !L.querySelector('.pl, .fav')) L.innerHTML = `<div class="none">${tracks.length ? 'Nothing matches.' : 'No memos yet. Add your first one above.'}</div>`;
 }
 function showEmpty() { cur = null; $('emptycard').style.display = 'flex'; setSrc(null); $('clist').innerHTML = ''; drawOverview(); }
 function setSrc(u) { if (srcUrl && srcUrl.startsWith('blob:')) URL.revokeObjectURL(srcUrl); srcUrl = u; if (u) audio.src = u; else audio.removeAttribute('src'); }
@@ -275,7 +294,9 @@ async function loadAudio(t) {
   fetch(data.signedUrl).then(r => r.ok ? r.blob() : null).then(b => { if (b) { t.blob = b; keepOffline(t, b); } }).catch(() => {});
 }
 // resume where you left off: each memo remembers its spot
+let skipResume = false;
 function resumeAt(t) {
+  if (skipResume) { skipResume = false; return; }
   if (pl) return;
   const p = +localStorage.getItem('mp.pos.' + t.id) || 0; if (p < 5 || p > (t.duration || 1e9) - 10) return;
   const go = () => { if (cur === t) { audio.currentTime = p; toast('Carrying on from ' + short(p) + '.', false, 2500); } };
@@ -332,10 +353,35 @@ function renderMeta() {
 }
 $('ttl').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); } });
 $('ttl').addEventListener('blur', () => { if (!cur || !isOwn(cur)) return; const v = $('ttl').textContent.trim(); if (!v) { $('ttl').textContent = cur.title; return; } if (v !== cur.title) { cur.title = v; save(); renderLib(); } });
-$('doneBtn').onclick = async () => {
-  if (!cur) return; if (!isOwn(cur)) { toast('This memo is shared with you, so it is play only.'); return; }
-  try { await save(cur, true); toast('Saved to MemoPad ✓', false, 1800); } catch { /* status shows the error */ }
+// share: a link that opens this memo, a chapter, or the current moment
+const linkFor = (t, sec) => `${location.origin}/?m=${t.id}${sec > 0 ? '&t=' + (Math.round(sec * 10) / 10) : ''}`;
+$('shareBtn').onclick = () => {
+  if (!cur) return; const k = chapterAt(audio.currentTime), c = cur.chapters[k];
+  $('shLead').textContent = isOwn(cur) && !cur.is_shared ? 'Turn on "Share to MemoPad" first, or only you can open the link. People need to be signed in to MemoPad to listen.' : 'People need to be signed in to MemoPad to listen.';
+  $('shChap').hidden = !(c && cur.chapters.length > 1); if (c) $('shChap').textContent = `This chapter: ${c.title}`;
+  $('shHere').textContent = `From right now (${short(audio.currentTime)})`;
+  $('shDlg').classList.add('open');
 };
+async function shareLink(url, title) {
+  $('shDlg').classList.remove('open');
+  if (navigator.share) { try { await navigator.share({ title, text: `${title} on MemoPad`, url }); return; } catch (e) { if (e.name === 'AbortError') return; } }
+  try { await navigator.clipboard.writeText(url); toast('Link copied. Paste it anywhere to share.'); } catch { prompt('Copy this link:', url); }
+}
+$('shMemo').onclick = () => shareLink(linkFor(cur, 0), cur.title);
+$('shChap').onclick = () => { const c = cur.chapters[chapterAt(audio.currentTime)]; shareLink(linkFor(cur, c.t), `${cur.title} · ${c.title}`); };
+$('shHere').onclick = () => shareLink(linkFor(cur, audio.currentTime), cur.title);
+$('shClose').onclick = () => $('shDlg').classList.remove('open');
+$('shDlg').addEventListener('click', e => { if (e.target.id === 'shDlg') $('shDlg').classList.remove('open'); });
+// opening a shared link: remember it through sign in, then jump there
+const deep = (() => { const q = new URLSearchParams(location.search); if (q.get('m')) { sessionStorage.setItem('mp.deep', JSON.stringify({ m: q.get('m'), t: +q.get('t') || 0 })); history.replaceState(null, '', '/'); } try { return JSON.parse(sessionStorage.getItem('mp.deep')); } catch { return null; } })();
+function openDeep() {
+  const d = deep && JSON.parse(sessionStorage.getItem('mp.deep') || 'null'); if (!d) return false;
+  const t = tracks.find(x => x.id === d.m); if (!t) return false;
+  sessionStorage.removeItem('mp.deep'); pl = null; cur = null; skipResume = true; select(t);
+  const go = () => { if (cur === t) audio.currentTime = d.t; };
+  setTimeout(() => audio.readyState >= 1 ? go() : audio.addEventListener('loadedmetadata', go, { once: true }), 0);
+  return true;
+}
 $('shareTog').onchange = () => {
   if (!cur || !isOwn(cur)) return; cur.is_shared = $('shareTog').checked; save(cur, true).then(() => toast(cur.is_shared ? 'Shared to MemoPad. Signed-in Progress Today users can play it, but not edit it.' : 'Now private. Only you can play it.'), () => { cur.is_shared = !cur.is_shared; $('shareTog').checked = cur.is_shared; });
   renderLib();
@@ -538,7 +584,7 @@ function renderTranscript() {
     p.appendChild(s); p.appendChild(document.createTextNode(' ')); wordEls.push(s);
   });
   T.appendChild(frag);
-  dispSt = displayStarts(cur.words, cur.peaks, BPS);
+  dispSt = displayStarts(cur.words, cur.peaks, BPS); markFavs();
   lastW = -2; applySearch(false);
 }
 let lastW = -2, lastChap = -2, dispSt = [];
@@ -962,9 +1008,11 @@ let rep = null, repHide = 0;
 function showRepBar(i) {
   if (!cur || !cur.words.length) return; const [j, k] = sentenceAt(i); if (rep) stopRep();
   const b = $('repbar'); b.hidden = false; b.dataset.j = j; b.dataset.k = k;
-  b.innerHTML = `<span>Repeat this affirmation</span><button type="button" data-n="3">3×</button><button type="button" data-n="5">5×</button><button type="button" data-n="10">10×</button><button type="button" class="x" aria-label="Close">✕</button>`;
+  const fv = favIndex(j, k) >= 0;
+  b.innerHTML = `<button type="button" class="star${fv ? ' on' : ''}" aria-label="${fv ? 'Remove from favourites' : 'Add to favourites'}">${fv ? '★' : '☆'}</button><span>Repeat</span><button type="button" data-n="3">3×</button><button type="button" data-n="5">5×</button><button type="button" data-n="10">10×</button><button type="button" class="x" aria-label="Close">✕</button>`;
   b.querySelectorAll('[data-n]').forEach(x => x.onclick = () => startRep(j, k, +x.dataset.n));
   b.querySelector('.x').onclick = stopRep;
+  b.querySelector('.star').onclick = () => { toggleFav(j, k); showRepBar(i); };
   clearTimeout(repHide); repHide = setTimeout(() => { if (!rep) b.hidden = true; }, 6000);
 }
 function startRep(j, k, n) { clearTimeout(repHide); rep = { j, k, n, done: 0 }; audio.currentTime = sentStart(j); audio.play().catch(() => {}); repLabel(); }
@@ -1000,3 +1048,33 @@ $('rPlay').onclick = togglePlay;
 $('rPrev').onclick = () => { if (!cur || !cur.words.length) return; const [j] = sentenceAt(Math.max(0, activeWord(audio.currentTime))); const t = audio.currentTime; const [pj] = t - sentStart(j) > 1.5 ? [j] : sentenceAt(Math.max(0, j - 1)); audio.currentTime = sentStart(pj); };
 $('rNext').onclick = () => { if (!cur || !cur.words.length) return; const [, e] = sentenceAt(Math.max(0, activeWord(audio.currentTime))); if (e + 1 < cur.words.length) audio.currentTime = sentStart(sentenceAt(e + 1)[0]); };
 addEventListener('keydown', e => { if (e.key === 'Escape' && !$('reader').hidden) closeReader(); });
+
+
+// ---------- favourite lines (kept on this device) ----------
+let favs = [];
+const favKey = () => 'mp.favs.' + (user ? user.id : 'x');
+function loadFavs() { try { favs = JSON.parse(localStorage.getItem(favKey())) || []; } catch { favs = []; } }
+const favIndex = (j, k) => cur ? favs.findIndex(f => f.m === cur.id && f.j === j && f.k === k) : -1;
+function toggleFav(j, k) {
+  const x = favIndex(j, k);
+  if (x >= 0) { favs.splice(x, 1); toast('Removed from favourites.', false, 1800); }
+  else { const W = cur.words; favs.unshift({ m: cur.id, j, k, t0: sentStart(j), t1: W[k].end + 0.35, text: W.slice(j, k + 1).map(w => w.text).join(' ') }); toast('Saved to Favourite lines ★', false, 1800); }
+  localStorage.setItem(favKey(), JSON.stringify(favs)); markFavs(); renderLib();
+}
+function markFavs() {
+  wordEls.forEach(el => el.classList.remove('fav')); if (!cur) return;
+  favs.filter(f => f.m === cur.id).forEach(f => { for (let i = f.j; i <= f.k; i++) wordEls[i]?.classList.add('fav'); });
+}
+function renderFavs(L, q) {
+  const list = favs.filter(f => tracks.some(t => t.id === f.m) && (!q || norm(f.text).includes(q))); if (!list.length) return;
+  const h = document.createElement('h4'); h.className = 'favh'; h.innerHTML = 'Favourite lines <button type="button" class="favplay">▶ Play all</button>'; L.appendChild(h);
+  h.querySelector('.favplay').onclick = () => { startPlaylist({ name: 'Favourite lines', items: list.map(f => ({ m: f.m, t0: f.t0, t1: f.t1, label: f.text })) }, 0); closeLib(); };
+  list.forEach(f => {
+    const t = tracks.find(x => x.id === f.m), d = document.createElement('div'); d.className = 'item fav';
+    d.innerHTML = `<span class="favstar">★</span><div style="min-width:0;flex:1"><div class="ftx"></div><div class="mt"><span>${esc(t.title)}</span><span>· ${short(f.t0)}</span></div></div><button class="idel" title="Remove" aria-label="Remove from favourites">✕</button>`;
+    d.querySelector('.ftx').textContent = f.text;
+    d.onclick = () => { stopPlaylist(); closeLib(); const go = () => { audio.currentTime = f.t0; audio.play().catch(() => {}); }; if (cur === t) go(); else { select(t); audio.addEventListener('loadedmetadata', go, { once: true }); } };
+    d.querySelector('.idel').onclick = e => { e.stopPropagation(); favs.splice(favs.indexOf(f), 1); localStorage.setItem(favKey(), JSON.stringify(favs)); markFavs(); renderLib(); };
+    L.appendChild(d);
+  });
+}

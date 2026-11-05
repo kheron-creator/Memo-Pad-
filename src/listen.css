@@ -32,3 +32,31 @@ footer{margin-top:28px;text-align:center;color:var(--mute);font-size:14px;font-w
 footer b{color:#fff}
 footer a{color:#fff}
 .lmsg{color:var(--mute);font-size:20px;font-weight:600}
+
+.ltools{display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin:-4px 0 16px}
+.ltools button{border:0;background:#ffffff12;border-radius:20px;padding:9px 14px;font-weight:700;font-size:13px;color:#ddd}
+.lchh{font-family:var(--head);font-size:13px;letter-spacing:1.6px;text-transform:uppercase;color:#77777d;margin:6px 2px 10px}
+/* full screen: just the captions and the controls */
+body.full .lp{max-width:none;min-height:100vh;min-height:100dvh}
+body.full header,body.full h1,body.full .lchaps,body.full .lchh,body.full footer{display:none}
+body.full .lsent{font-size:clamp(34px,6.5vw,72px);min-height:60vh}
+body.full .ltools{position:fixed;top:calc(14px + env(safe-area-inset-top));left:0;right:0;margin:0;z-index:3}
+body.full .lch{margin-top:56px}
+/* light mode */
+body.light,body.light .lp{background:#fff;color:#111}
+body.light .rw{color:#c4c4c8}
+body.light .rw.past{color:#55555a}
+body.light .rw.now{color:#000;text-shadow:none}
+body.light .lbar{background:#e6e6ea}
+body.light .lbar i{background:#111}
+body.light .ltools button{background:#0000000d;color:#222}
+body.light .lctl button svg{fill:#111}
+body.light .lctl .lsk{color:#333}
+body.light .lchaps button{background:#f3f3f5;color:#111}
+body.light .lchaps button.on{border-color:#d0d0d6;background:#ebebef}
+body.light footer b,body.light footer a{color:#111}
+/* blackout */
+.blackout{position:fixed;inset:0;background:#000;z-index:80;cursor:none}
+.blackout[hidden]{display:none}
+.bhint{position:absolute;left:0;right:0;bottom:calc(40px + env(safe-area-inset-bottom));text-align:center;color:#555;font-size:15px;font-weight:600;opacity:0;transition:opacity .4s}
+.bhint.show{opacity:1}

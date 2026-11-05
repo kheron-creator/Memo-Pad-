@@ -45,7 +45,7 @@ async function load() {
 }
 function fail(msg) { $('lTitle').textContent = 'MemoPad'; $('lSent').innerHTML = `<span class="lmsg">${msg}</span>`; document.querySelector('.lctl').hidden = true; $('lBar').hidden = true; document.querySelector('.ltime').hidden = true; }
 function renderChapters() {
-  const L = $('lChaps'); L.innerHTML = ''; if (chapters.length < 2) return;
+  const L = $('lChaps'); L.innerHTML = ''; if (chapters.length < 2) return; $('lChh').hidden = false;
   chapters.forEach((c, k) => { const b = document.createElement('button'); b.innerHTML = `<span class="n">${k + 1}</span><span class="t"></span><span class="tm">${short(c.t)}</span>`; b.querySelector('.t').textContent = c.title; b.onclick = () => { audio.currentTime = c.t; audio.play().catch(() => {}); scrollTo({ top: 0, behavior: 'smooth' }); }; L.appendChild(b); });
 }
 function loop() {
@@ -75,3 +75,24 @@ $('lBar').addEventListener('pointermove', e => drag && seekAt(e));
 $('lBar').addEventListener('pointerup', () => drag = false);
 addEventListener('keydown', e => { if (e.code === 'Space') { e.preventDefault(); $('lPlay').click(); } });
 load();
+
+// full screen captions, light mode, blackout
+const fsEl = () => document.fullscreenElement || document.webkitFullscreenElement;
+const goFull = el => { try { const r = el.requestFullscreen ? el.requestFullscreen({ navigationUI: 'hide' }) : el.webkitRequestFullscreen?.(); r?.catch?.(() => {}); } catch {} };
+const exitFull = () => { if (fsEl()) (document.exitFullscreen || document.webkitExitFullscreen)?.call(document); };
+function setFull(on) { document.body.classList.toggle('full', on); $('lFull').textContent = on ? 'Exit full screen' : 'Full screen'; if (on) { goFull(document.documentElement); scrollTo({ top: 0 }); } else exitFull(); }
+$('lFull').onclick = () => setFull(!document.body.classList.contains('full'));
+document.addEventListener('fullscreenchange', () => { if (!fsEl() && document.body.classList.contains('full') && $('blackout').hidden) setFull(false); });
+function setLight(on) { document.body.classList.toggle('light', on); $('lLight').textContent = on ? 'Dark mode' : 'Light mode'; try { localStorage.setItem('mpl.light', on ? '1' : ''); } catch {} }
+$('lLight').onclick = () => setLight(!document.body.classList.contains('light'));
+try { setLight(!!localStorage.getItem('mpl.light')); } catch {}
+let wake = null, hintT = 0, lastTap = 0;
+async function blackout(on) {
+  $('blackout').hidden = !on;
+  if (on) { hint(); goFull($('blackout')); try { wake = await navigator.wakeLock?.request('screen'); } catch {} }
+  else { exitFull(); try { wake && wake.release(); } catch {} wake = null; }
+}
+function hint() { $('bHint').classList.add('show'); clearTimeout(hintT); hintT = setTimeout(() => $('bHint').classList.remove('show'), 2500); }
+$('lBlack').onclick = () => blackout(true);
+$('blackout').addEventListener('click', () => { const n = Date.now(); if (n - lastTap < 400) blackout(false); else hint(); lastTap = n; });
+addEventListener('keydown', e => { if (e.key !== 'Escape') return; if (!$('blackout').hidden) blackout(false); else if (document.body.classList.contains('full')) setFull(false); });

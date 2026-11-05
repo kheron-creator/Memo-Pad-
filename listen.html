@@ -15,6 +15,7 @@
 <body>
 <main class="lp">
   <header><img src="/logo.png" alt="Progress Today" class="lplogo"></header>
+  <div class="ltools"><button id="lFull" type="button">Full screen</button><button id="lLight" type="button">Light mode</button><button id="lBlack" type="button">Blackout</button></div>
   <h1 id="lTitle">Loading…</h1>
   <div class="lch" id="lCh"></div>
   <div class="lsent" id="lSent"></div>
@@ -27,9 +28,11 @@
     <button id="lFwd" aria-label="Forward 15 seconds" class="lsk">+15</button>
     <button id="lNextCh" aria-label="Next chapter"><svg viewBox="0 0 32 32" width="26" fill="#fff"><rect x="22.6" y="7" width="3.4" height="18" rx="1.2"/><path d="M6 7.5v17a1 1 0 0 0 1.5.9L21 16.9a1 1 0 0 0 0-1.8L7.5 6.6A1 1 0 0 0 6 7.5z"/></svg></button>
   </div>
+  <h2 class="lchh" id="lChh" hidden>Chapters</h2>
   <section class="lchaps" id="lChaps"></section>
   <footer><b>MemoPad</b> by Progress Today · Did you get the message?<br><a href="/">Make your own on MemoPad</a></footer>
 </main>
+<div class="blackout" id="blackout" hidden><div class="bhint" id="bHint">Audio keeps playing. Double tap to come back.</div></div>
 <audio id="lAudio" preload="metadata" playsinline></audio>
 <script type="module" src="/src/listen.js"></script>
 </body>

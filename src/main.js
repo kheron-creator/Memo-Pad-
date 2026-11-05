@@ -5,6 +5,7 @@ import {
 } from './cloud.js';
 import { transcriptChapters } from './chapters.js';
 import { parseScript, alignToAsr, spreadOverVoice, scriptChapters } from './script.js';
+import { displayStarts } from './sync.js';
 
 const $ = id => document.getElementById(id);
 const audio = $('audio');
@@ -28,13 +29,18 @@ let srcUrl = null;
 // ---------- helpers ----------
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const pad = n => String(n).padStart(2, '0');
-const clockFmt = s => { s = Math.max(0, s || 0); const m = Math.floor(s / 60), x = Math.floor(s % 60), c = Math.floor((s % 1) * 100); return `${pad(m)}:${pad(x)}.${pad(c)}`; };
+// the big clock: minutes and seconds (hours too on long tracks)
+const clockFmt = s => { s = Math.floor(Math.max(0, s || 0)); const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, x = s % 60; return h ? `${h}:${pad(m)}:${pad(x)}` : `${pad(m)}:${pad(x)}`; };
 const short = s => { s = Math.max(0, s || 0); return `${Math.floor(s / 60)}:${pad(Math.floor(s % 60))}`; };
 function lerpCol(cols, f) { f = clamp(f, 0, 1) * (cols.length - 1); const i = Math.min(cols.length - 2, Math.floor(f)), k = f - i; const a = hex(cols[i]), b = hex(cols[i + 1]); return `rgb(${a.map((v, j) => Math.round(v + (b[j] - v) * k)).join(',')})`; }
 function hex(h) { const n = parseInt(h.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; }
 function status(t, err) { const s = $('status'); s.textContent = t || ''; s.className = 'status' + (err ? ' err' : ''); }
 let toastT;
-function toast(t, warn, ms = 4200) { const el = $('toast'); el.textContent = t; el.className = 'toast show' + (warn ? ' warn' : ''); clearTimeout(toastT); toastT = setTimeout(() => el.className = 'toast', ms); }
+function toast(t, warn, ms = 4200, action) {
+  const el = $('toast'); el.textContent = t; el.className = 'toast show' + (warn ? ' warn' : '');
+  if (action) { const b = document.createElement('button'); b.className = 'tact'; b.textContent = action.label; b.onclick = () => { el.className = 'toast'; clearTimeout(toastT); action.run(); }; el.append(' ', b); }
+  clearTimeout(toastT); toastT = setTimeout(() => el.className = 'toast', ms);
+}
 const mb = b => (b / MB).toFixed(b < 10 * MB ? 1 : 0) + ' MB';
 const isOwn = t => !!(t && user && t.user_id === user.id);
 const norm = s => (s || '').toLowerCase().replace(/[^\p{L}\p{N}' ]/gu, '');
@@ -230,6 +236,7 @@ function renderLib() {
       const n = t.chapters.length;
       d.innerHTML = `<span class="dot"></span><div style="min-width:0;flex:1"><div class="nm">${esc(t.title)}</div><div class="mt"><span>${short(t.duration)}</span><span>· ${n} chapter${n === 1 ? '' : 's'}</span>${t.category ? `<span class="cat">${esc(t.category)}</span>` : ''}${isOwn(t) && t.is_shared ? '<span class="sh">· shared</span>' : ''}${txing === t ? '<span class="sh">· transcribing…</span>' : txQueue.includes(t) ? '<span class="sh">· waiting to transcribe</span>' : ''}</div></div>`;
       d.onclick = () => { select(t); closeLib(); };
+      if (isOwn(t)) { const x = document.createElement('button'); x.className = 'idel'; x.title = 'Delete'; x.setAttribute('aria-label', 'Delete ' + t.title); x.innerHTML = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>'; x.onclick = e => { e.stopPropagation(); deleteTrack(t); }; d.appendChild(x); }
       L.appendChild(d);
     });
   };
@@ -241,7 +248,7 @@ function showEmpty() { cur = null; $('emptycard').style.display = 'flex'; setSrc
 function setSrc(u) { if (srcUrl && srcUrl.startsWith('blob:')) URL.revokeObjectURL(srcUrl); srcUrl = u; if (u) audio.src = u; else audio.removeAttribute('src'); }
 
 async function select(t) {
-  if (cur === t) return; cur = t; audio.pause(); setSrc(null);
+  if (cur === t) return; savePos(true); cur = t; audio.pause(); setSrc(null);
   const own = isOwn(t);
   document.body.classList.toggle('readonly', !own);
   $('ttl').contentEditable = own ? 'true' : 'false';
@@ -257,13 +264,53 @@ async function select(t) {
 async function loadAudio(t) {
   const blob = t.blob || await audioGet(t.id);
   if (cur !== t) return;
-  if (blob) { t.blob = blob; setSrc(URL.createObjectURL(blob)); audio.playbackRate = speed(); return; }
+  if (blob) { t.blob = blob; setSrc(URL.createObjectURL(blob)); audio.playbackRate = speed(); resumeAt(t); return; }
   const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(t.audio_path, 3600);
   if (cur !== t) return;
   if (error) { status('Could not load this audio. Check your connection.', true); return; }
-  setSrc(data.signedUrl); audio.playbackRate = speed();
+  setSrc(data.signedUrl); audio.playbackRate = speed(); resumeAt(t);
   fetch(data.signedUrl).then(r => r.ok ? r.blob() : null).then(b => { if (b) { t.blob = b; audioPut(t.id, b); } }).catch(() => {});
 }
+// resume where you left off: each memo remembers its spot
+function resumeAt(t) {
+  const p = +localStorage.getItem('mp.pos.' + t.id) || 0; if (p < 5 || p > (t.duration || 1e9) - 10) return;
+  const go = () => { if (cur === t) { audio.currentTime = p; toast('Carrying on from ' + short(p) + '.', false, 2500); } };
+  audio.readyState >= 1 ? go() : audio.addEventListener('loadedmetadata', go, { once: true });
+}
+let posSaved = 0;
+function savePos(force) {
+  if (!cur || !audio.src || !audio.duration) return; const now = performance.now(); if (!force && now - posSaved < 4000) return; posSaved = now;
+  const t = audio.currentTime; if (t > audio.duration - 10) localStorage.removeItem('mp.pos.' + cur.id); else localStorage.setItem('mp.pos.' + cur.id, t.toFixed(1));
+}
+audio.addEventListener('timeupdate', () => savePos(false));
+audio.addEventListener('pause', () => savePos(true));
+audio.addEventListener('ended', () => cur && localStorage.removeItem('mp.pos.' + cur.id));
+addEventListener('pagehide', () => savePos(true));
+
+// sleep timer: fades out gently, then pauses
+const sleep = { end: 0, chapter: false, timer: 0 };
+function setSleep(v) {
+  clearInterval(sleep.timer); sleep.end = 0; sleep.chapter = v === 'ch'; audio.volume = 1;
+  if (v !== 'off' && v !== 'ch') sleep.end = Date.now() + +v * 60000;
+  if (v !== 'off') sleep.timer = setInterval(sleepTick, 500);
+  document.querySelectorAll('#sleep button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
+  sleepLabel(); if (v !== 'off') toast(v === 'ch' ? 'Stopping at the end of this chapter.' : `Stopping in ${v} minutes.`, false, 2500);
+}
+function sleepLabel() {
+  const el = $('sleepLeft'); if (!el) return;
+  el.textContent = sleep.end ? short(Math.max(0, (sleep.end - Date.now()) / 1000)) + ' left' : sleep.chapter ? 'end of chapter' : '';
+}
+function sleepTick() {
+  sleepLabel();
+  let left = Infinity;
+  if (sleep.end) left = (sleep.end - Date.now()) / 1000;
+  else if (sleep.chapter && cur) { const k = chapterAt(audio.currentTime), end = cur.chapters[k + 1]?.t ?? cur.duration; left = (end - audio.currentTime) / (audio.playbackRate || 1); }
+  if (audio.paused && sleep.end) return;
+  audio.volume = left < 8 ? Math.max(0, left / 8) : 1;
+  if (left <= 0.15) { audio.pause(); audio.volume = 1; setSleep('off'); toast('Sleep timer: paused. Sleep well.', false, 3000); }
+}
+document.querySelectorAll('#sleep button').forEach(b => b.onclick = () => setSleep(b.dataset.v));
+
 async function getBlob(t) {
   if (t.blob) return t.blob;
   const c = await audioGet(t.id); if (c) return t.blob = c;
@@ -305,15 +352,30 @@ $('newCat').addEventListener('keydown', e => { if (e.key === 'Enter') $('newCatG
 $('catClose').onclick = () => $('catDlg').classList.remove('open');
 $('catDlg').onclick = e => { if (e.target.id === 'catDlg') $('catDlg').classList.remove('open'); };
 // delete
-$('delBtn').onclick = async () => {
-  const t = cur; if (!t || !isOwn(t)) return; $('pop').classList.remove('open');
-  if (!confirm(`Delete "${t.title}" from MemoPad? This removes the audio and transcript for good.`)) return;
+// delete with a 10 second Undo: the memo disappears at once, and is only removed for good afterwards
+const pendingDel = new Map();
+function deleteTrack(t) {
+  if (!t || !isOwn(t) || pendingDel.has(t.id)) return; $('pop').classList.remove('open');
+  const at = tracks.indexOf(t), wasCur = cur === t;
+  tracks = tracks.filter(x => x !== t);
+  if (wasCur) { audio.pause(); cur = null; tracks[0] ? select(tracks[0]) : showEmpty(); }
+  renderCats(); renderLib();
+  const timer = setTimeout(() => finishDelete(t), 10000);
+  pendingDel.set(t.id, timer);
+  toast(`Deleted "${t.title}".`, false, 10000, { label: 'UNDO', run: () => {
+    clearTimeout(timer); pendingDel.delete(t.id);
+    tracks.splice(Math.min(at, tracks.length), 0, t); renderCats(); renderLib(); if (wasCur) { cur = null; select(t); }
+  } });
+}
+async function finishDelete(t) {
+  pendingDel.delete(t.id);
   const st = await supabase.storage.from(BUCKET).remove([t.audio_path]);
   const del = await supabase.from(TABLE).delete().eq('id', t.id);
-  if (del.error || st.error) { toast('Could not delete: ' + (del.error || st.error).message, true); return; }
-  cacheDel(t.id); tracks = tracks.filter(x => x !== t); cur = null; audio.pause();
-  renderCats(); renderLib(); tracks[0] ? select(tracks[0]) : showEmpty(); toast('Deleted.'); refreshStorage();
-};
+  if (del.error || st.error) { tracks.push(t); renderCats(); renderLib(); toast('Could not delete: ' + (del.error || st.error).message, true); return; }
+  cacheDel(t.id); localStorage.removeItem('mp.pos.' + t.id); refreshStorage();
+}
+// leaving the page before the 10 seconds are up keeps the memo (nothing is lost by accident)
+$('delBtn').onclick = () => deleteTrack(cur);
 
 // library drawer on phones and tablets
 function openLib() { document.body.classList.add('libopen'); }
@@ -452,6 +514,7 @@ let wordEls = [];
 function renderTranscript() {
   const T = $('tx'); T.innerHTML = ''; wordEls = [];
   if (!cur) return;
+  dispSt = [];
   if (!cur.words.length) {
     T.innerHTML = (txing === cur || txQueue.includes(cur))
       ? `<div class="empty">Transcribing in the background…<br>The words will appear here and light up as it plays.</div>`
@@ -470,10 +533,12 @@ function renderTranscript() {
     p.appendChild(s); p.appendChild(document.createTextNode(' ')); wordEls.push(s);
   });
   T.appendChild(frag);
+  dispSt = displayStarts(cur.words, cur.peaks, BPS);
   lastW = -2; applySearch(false);
 }
-let lastW = -2, lastChap = -2;
-function activeWord(t) { const W = cur.words; let lo = 0, hi = W.length - 1, a = -1; while (lo <= hi) { const m = (lo + hi) >> 1; if (W[m].start <= t) { a = m; lo = m + 1; } else hi = m - 1; } return a; }
+let lastW = -2, lastChap = -2, dispSt = [];
+// a word lights up just as it is heard (the small lead covers the screen's own delay)
+function activeWord(t) { const W = dispSt; t += 0.06; let lo = 0, hi = W.length - 1, a = -1; while (lo <= hi) { const m = (lo + hi) >> 1; if (W[m] <= t) { a = m; lo = m + 1; } else hi = m - 1; } return a; }
 function updateTranscript() {
   if (!cur || !cur.words.length || mode !== 'tx') return; const t = audio.currentTime; const a = activeWord(t);
   if (a === lastW) return;

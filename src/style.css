@@ -93,9 +93,9 @@ button{cursor:pointer}
   -webkit-mask-image:linear-gradient(transparent 0,#000 40px,#000 calc(100% - 60px),transparent 100%);mask-image:linear-gradient(transparent 0,#000 40px,#000 calc(100% - 60px),transparent 100%)}
 #tx p{margin:0 0 22px}
 #tx .ch{font-family:var(--head);font-size:12px;text-transform:uppercase;letter-spacing:1.6px;color:#8e8e93;font-weight:700;margin:14px 0 10px;cursor:pointer}
-#tx span.w{color:#5c5c62;transition:color .25s;cursor:pointer;border-radius:5px}
-#tx span.w.past{color:#d6d6da}
-#tx span.w.now{color:#fff}
+#tx span.w{color:#5c5c62;transition:color .12s,text-shadow .12s;cursor:pointer;border-radius:5px}
+#tx span.w.past{color:#a8a8ad}
+#tx span.w.now{color:#fff;text-shadow:0 0 14px rgba(255,255,255,.55)}
 #tx span.w.hit{background:#ffffff26;color:#fff}
 #tx span.w.hit.cur{background:#fff;color:#000}
 #tx .empty{color:var(--mute);font-size:17px;line-height:1.5;text-align:center;padding-top:30px}
@@ -231,3 +231,11 @@ body.dragging .card::after{content:'Drop to add';position:absolute;inset:10px;bo
 
 .scripttxt{width:100%;min-height:42vh;background:#101013;border:1px solid #333;border-radius:14px;padding:12px 14px;font-family:var(--body);font-size:16px;line-height:1.45;color:#fff;outline:none;resize:vertical}
 .scripttxt:focus{border-color:#666}
+
+.item{position:relative}
+.item .idel{flex:0 0 auto;border:0;background:none;color:var(--mute);padding:6px;border-radius:10px;opacity:0;transition:opacity .15s}
+.item:hover .idel,.item.on .idel{opacity:1}
+.item .idel:hover{color:#fff;background:#ffffff14}
+@media (hover:none){.item .idel{opacity:.75}}
+.toast .tact{border:0;background:#fff;color:#000;font-family:var(--head);font-weight:700;font-size:13px;letter-spacing:.8px;border-radius:10px;padding:6px 12px;margin-left:10px}
+.sleepleft{color:var(--mute);font-weight:600;text-transform:none;letter-spacing:0;margin-left:6px}

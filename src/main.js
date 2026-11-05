@@ -259,11 +259,17 @@ function renderCats() {
 }
 $('libq').addEventListener('input', () => renderLib());
 function textOf(t) { if (t._text == null) t._text = norm(t.words.map(w => w.text).join(' ')); return t._text; }
+// the memo you played most recently sits at the top of the list
+const recentKey = () => 'mp.recent.' + (user ? user.id : 'x');
+let _recent = null;
+function recentMap() { if (!_recent) { try { _recent = JSON.parse(localStorage.getItem(recentKey())) || {}; } catch { _recent = {}; } } return _recent; }
+function markRecent(t) { if (!t) return; const R = recentMap(); R[t.id] = Date.now(); try { localStorage.setItem(recentKey(), JSON.stringify(R)); } catch {} }
 function renderLib() {
   const L = $('lib'); L.innerHTML = '';
   const q = norm($('libq').value.trim());
   const ok = t => (!catFilter || t.category === catFilter) && (!q || norm(t.title).includes(q) || textOf(t).includes(q));
-  const mine = tracks.filter(t => isOwn(t) && ok(t)), shared = tracks.filter(t => !isOwn(t) && ok(t));
+  const R = recentMap(), byRecent = (a, b) => (R[b.id] || 0) - (R[a.id] || 0);
+  const mine = tracks.filter(t => isOwn(t) && ok(t)).sort(byRecent), shared = tracks.filter(t => !isOwn(t) && ok(t)).sort(byRecent);
   const when = ms => { const d = new Date(ms), now = new Date(), day = 864e5, d0 = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
     if (ms >= d0) return `${pad(d.getHours())}:${pad(d.getMinutes())}`; if (ms >= d0 - day) return 'Yesterday';
     if (ms >= d0 - 6 * day) return d.toLocaleDateString(undefined, { weekday: 'long' }); return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' }); };
@@ -467,7 +473,7 @@ $('closeSide').onclick = $('scrim').onclick = closeLib;
 // ---------- transport ----------
 function togglePlay() { if (!cur || !audio.src) return; if (audio.paused) audio.play().catch(err => status('Tap play again to start (' + err.message + ').', true)); else audio.pause(); }
 $('play').onclick = togglePlay;
-audio.onplay = () => { $('playIcon').setAttribute('d', 'M16 10 h10 v44 h-10 Z M38 10 h10 v44 h-10 Z'); $('play').classList.add('on'); renderLib(); };
+audio.onplay = () => { markRecent(cur); $('playIcon').setAttribute('d', 'M16 10 h10 v44 h-10 Z M38 10 h10 v44 h-10 Z'); $('play').classList.add('on'); renderLib(); };
 audio.onpause = () => { $('playIcon').setAttribute('d', 'M18 10 L54 32 L18 54 Z'); $('play').classList.remove('on'); renderLib(); };
 audio.onerror = () => { if (cur && audio.src) status('This audio could not play. Check your connection and try again.', true); };
 const jump = d => { if (cur) audio.currentTime = clamp(audio.currentTime + d, 0, audio.duration || cur.duration); };
@@ -475,7 +481,17 @@ $('back').onclick = () => jump(-15); $('fwd').onclick = () => jump(15);
 // skip through chapters like songs
 function prevChapter() { if (!cur) return; const t = audio.currentTime, k = chapterAt(t); if (k < 0) return; const c = cur.chapters[k]; audio.currentTime = (t - c.t > 3 || k === 0) ? c.t : cur.chapters[k - 1].t; }
 function nextChapter() { if (!cur) return; const k = chapterAt(audio.currentTime); const n = cur.chapters[k + 1]; if (n) audio.currentTime = n.t; }
-$('prevCh').onclick = prevChapter; $('nextCh').onclick = nextChapter;
+// one press = next/previous affirmation; two quick presses = next/previous chapter
+function prevAff() { const t = audio.currentTime, [j] = sentenceAt(Math.max(0, activeWord(t))); const [pj] = t - sentStart(j) > 1.5 ? [j] : sentenceAt(Math.max(0, j - 1)); audio.currentTime = sentStart(pj); }
+function nextAff() { const [, e] = sentenceAt(Math.max(0, activeWord(audio.currentTime))); if (e + 1 < cur.words.length) audio.currentTime = sentStart(sentenceAt(e + 1)[0]); }
+let skipMem = { at: 0, dir: 0, t: 0 };
+function skip(dir) {
+  if (!cur) return; const n = Date.now();
+  if (!cur.words.length) { dir > 0 ? nextChapter() : prevChapter(); return; }
+  if (n - skipMem.at < 500 && skipMem.dir === dir) { audio.currentTime = skipMem.t; skipMem.at = 0; dir > 0 ? nextChapter() : prevChapter(); toast(dir > 0 ? 'Next chapter' : 'Previous chapter', false, 1200); return; }
+  skipMem = { at: n, dir, t: audio.currentTime }; dir > 0 ? nextAff() : prevAff();
+}
+$('prevCh').onclick = () => skip(-1); $('nextCh').onclick = () => skip(1);
 $('chapnow').onclick = () => { const el = document.querySelector('.chaps'); if (innerWidth <= 820) el.scrollIntoView({ behavior: 'smooth' }); };
 // lock screen and headphone controls (iPhone shows the chapter as the track name)
 const ms = navigator.mediaSession;
@@ -487,7 +503,7 @@ function updateMediaSession() {
 if (ms) {
   const set = (a, f) => { try { ms.setActionHandler(a, f); } catch { /* unsupported action */ } };
   set('play', () => audio.play()); set('pause', () => audio.pause());
-  set('previoustrack', prevChapter); set('nexttrack', nextChapter);
+  set('previoustrack', () => skip(-1)); set('nexttrack', () => skip(1));
   set('seekbackward', () => jump(-15)); set('seekforward', () => jump(15));
   set('seekto', e => { if (e.seekTime != null) audio.currentTime = e.seekTime; });
 }
@@ -1069,10 +1085,10 @@ function tickRep(t) {
 // ---------- read-along: full screen, one affirmation at a time ----------
 let shownSent = -1, wake = null;
 async function openReader() {
-  if (!cur) return; $('pop').classList.remove('open'); $('reader').hidden = false; shownSent = -1; tickReader(audio.currentTime);
+  if (!cur) return; $('pop').classList.remove('open'); $('reader').hidden = false; shownSent = -1; tickReader(audio.currentTime); rPoke();
   try { wake = await navigator.wakeLock?.request('screen'); } catch { wake = null; }
 }
-function closeReader() { $('reader').hidden = true; try { wake && wake.release(); } catch {} wake = null; }
+function closeReader() { setImm(false); $('reader').hidden = true; try { wake && wake.release(); } catch {} wake = null; }
 $('readBtn').onclick = openReader; $('readIc').onclick = openReader; $('rClose').onclick = closeReader;
 document.addEventListener('visibilitychange', async () => { if (!$('reader').hidden && document.visibilityState === 'visible') { try { wake = await navigator.wakeLock?.request('screen'); } catch {} } });
 function tickReader(t) {
@@ -1087,8 +1103,8 @@ function tickReader(t) {
   $('rText').querySelectorAll('.rw').forEach(s => { const i = +s.dataset.i; s.classList.toggle('past', i < a); s.classList.toggle('now', i === a); });
 }
 $('rPlay').onclick = togglePlay;
-$('rPrev').onclick = () => { if (!cur || !cur.words.length) return; const [j] = sentenceAt(Math.max(0, activeWord(audio.currentTime))); const t = audio.currentTime; const [pj] = t - sentStart(j) > 1.5 ? [j] : sentenceAt(Math.max(0, j - 1)); audio.currentTime = sentStart(pj); };
-$('rNext').onclick = () => { if (!cur || !cur.words.length) return; const [, e] = sentenceAt(Math.max(0, activeWord(audio.currentTime))); if (e + 1 < cur.words.length) audio.currentTime = sentStart(sentenceAt(e + 1)[0]); };
+$('rPrev').onclick = e => { e.stopPropagation(); skip(-1); rPoke(); };
+$('rNext').onclick = e => { e.stopPropagation(); skip(1); rPoke(); };
 addEventListener('keydown', e => { if (e.key === 'Escape' && !$('reader').hidden) closeReader(); });
 
 
@@ -1272,8 +1288,21 @@ async function quoteToPad(f, title) {
 const fsEl = () => document.fullscreenElement || document.webkitFullscreenElement;
 async function goFull(el) { try { await (el.requestFullscreen ? el.requestFullscreen({ navigationUI: 'hide' }) : el.webkitRequestFullscreen?.()); } catch {} }
 function exitFull() { if (fsEl()) (document.exitFullscreen || document.webkitExitFullscreen)?.call(document); }
-$('rFull').onclick = () => fsEl() ? exitFull() : goFull($('reader'));
-document.addEventListener('fullscreenchange', () => { $('rFull').textContent = fsEl() ? 'Exit full screen' : 'Full screen'; });
+// read-along full screen: buttons fade while playing, one tap brings them back, double tap toggles full screen.
+// iPhone Safari can't make a page truly full screen, so there we hide everything but the words.
+const canFull = !!(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen) && !/iPhone|iPod/.test(navigator.userAgent);
+let rHideT = 0, rTapAt = 0, rTapT = 0;
+function rPoke() { const R = $('reader'); R.classList.add('ctl'); clearTimeout(rHideT); rHideT = setTimeout(() => { if (!audio.paused) R.classList.remove('ctl'); }, 3500); }
+function setImm(on) { $('reader').classList.toggle('imm', on); $('rFull').textContent = on ? 'Exit full screen' : 'Full screen'; if (on) { if (canFull) goFull($('reader')); $('reader').classList.remove('ctl'); } else exitFull(); }
+$('rFull').onclick = e => { e.stopPropagation(); const on = !$('reader').classList.contains('imm'); setImm(on); if (on && !canFull) toast('Tap once for the buttons. Double tap to leave full screen.', false, 3000); };
+document.addEventListener('fullscreenchange', () => { if (!fsEl() && $('reader').classList.contains('imm')) setImm(false); });
+$('reader').addEventListener('click', e => {
+  if (e.target.closest('button')) { rPoke(); return; }
+  const n = Date.now();
+  if (n - rTapAt < 350) { clearTimeout(rTapT); rTapAt = 0; setImm(!$('reader').classList.contains('imm')); return; }
+  rTapAt = n; rTapT = setTimeout(() => { const R = $('reader'); if (R.classList.contains('ctl') && !audio.paused) { clearTimeout(rHideT); R.classList.remove('ctl'); } else rPoke(); }, 300);
+});
+audio.addEventListener('pause', () => { if (!$('reader').hidden) rPoke(); });
 let blackWake = null, hintT = 0;
 async function openBlackout() {
   $('pop').classList.remove('open'); const B = $('blackout'); B.hidden = false; showHint();

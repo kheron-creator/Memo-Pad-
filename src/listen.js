@@ -39,7 +39,7 @@ async function load() {
   if ('mediaSession' in navigator) {
     navigator.mediaSession.metadata = new MediaMetadata({ title: data.title, artist: 'MemoPad · Progress Today', artwork: [{ src: '/icon-512.png', sizes: '512x512', type: 'image/png' }] });
     navigator.mediaSession.setActionHandler('play', () => audio.play()); navigator.mediaSession.setActionHandler('pause', () => audio.pause());
-    navigator.mediaSession.setActionHandler('previoustrack', prevCh); navigator.mediaSession.setActionHandler('nexttrack', nextCh);
+    navigator.mediaSession.setActionHandler('previoustrack', () => skip(-1)); navigator.mediaSession.setActionHandler('nexttrack', () => skip(1));
   }
   requestAnimationFrame(loop);
 }
@@ -68,7 +68,18 @@ function nextCh() { const n = chapters[chapterAt(audio.currentTime) + 1]; if (n)
 $('lPlay').onclick = () => audio.paused ? audio.play().catch(() => {}) : audio.pause();
 $('lBack').onclick = () => audio.currentTime = Math.max(0, audio.currentTime - 15);
 $('lFwd').onclick = () => audio.currentTime = Math.min(audio.duration || 1e9, audio.currentTime + 15);
-$('lPrevCh').onclick = prevCh; $('lNextCh').onclick = nextCh;
+// one press = next/previous affirmation; two quick presses = next/previous chapter
+const sStart = j => Math.max(0, (st[j] ?? words[j].start) - 0.05);
+function prevAff() { const t = audio.currentTime, [j] = sentenceAt(Math.max(0, activeWord(t))); const [pj] = t - sStart(j) > 1.5 ? [j] : sentenceAt(Math.max(0, j - 1)); audio.currentTime = sStart(pj); }
+function nextAff() { const [, e] = sentenceAt(Math.max(0, activeWord(audio.currentTime))); if (e + 1 < words.length) audio.currentTime = sStart(sentenceAt(e + 1)[0]); }
+let skipMem = { at: 0, dir: 0, t: 0 };
+function skip(dir) {
+  if (!words.length) { dir > 0 ? nextCh() : prevCh(); return; }
+  const n = Date.now();
+  if (n - skipMem.at < 500 && skipMem.dir === dir) { audio.currentTime = skipMem.t; skipMem.at = 0; dir > 0 ? nextCh() : prevCh(); return; }
+  skipMem = { at: n, dir, t: audio.currentTime }; dir > 0 ? nextAff() : prevAff();
+}
+$('lPrevCh').onclick = () => skip(-1); $('lNextCh').onclick = () => skip(1);
 const seekAt = e => { const r = $('lBar').getBoundingClientRect(); audio.currentTime = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * (audio.duration || memo.duration_s); };
 let drag = false;
 $('lBar').addEventListener('pointerdown', e => { e.stopPropagation(); drag = true; $('yt').classList.add('drag'); $('lBar').setPointerCapture(e.pointerId); seekAt(e); });

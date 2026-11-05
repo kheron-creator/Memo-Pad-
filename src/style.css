@@ -446,3 +446,10 @@ body.resizing{cursor:col-resize;user-select:none}
 .fvb:hover{background:#ffffff14;color:#fff}
 .repbar .cp{background:none;color:#ddd;padding:6px 8px;display:grid;place-items:center}
 .favh span{display:flex;gap:6px}
+
+/* read-along: controls fade while playing; tap brings them back */
+.reader .rclose,.reader .rtools,.reader .rctl{transition:opacity .3s}
+.reader:not(.ctl) .rclose,.reader:not(.ctl) .rtools,.reader:not(.ctl) .rctl{opacity:0;pointer-events:none}
+.reader.imm .rch{opacity:.0}
+.reader.imm.ctl .rch{opacity:1}
+.reader.imm .rtext{font-size:clamp(34px,8vw,80px)}

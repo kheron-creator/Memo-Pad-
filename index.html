@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MemoPad · Did you get the message?</title>
+<meta name="description" content="MemoPad by Progress Today: your voice memo affirmations, with a waveform, chapters and a live transcript.">
+<meta name="theme-color" content="#0c0c0f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="MemoPad">
+<link rel="icon" type="image/png" href="/favicon-64.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Dosis:wght@400;500;600;700;800&family=Poppins:wght@500;600;700;800;900&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<!-- Sign in -->
+<section class="auth" id="auth" hidden>
+  <div class="authbox">
+    <img class="authlogo" src="/logo.png" alt="Progress Today">
+    <h1>MemoPad</h1>
+    <p class="tag">Did you get the message?</p>
+    <p class="lead">Sign in with your Progress Today account. It's the same login as Progress Pad.</p>
+    <form id="authForm" autocomplete="on">
+      <input id="authEmail" type="email" placeholder="Email" autocomplete="email" required>
+      <input id="authPass" type="password" placeholder="Password" autocomplete="current-password" required>
+      <button class="pill" id="authGo" type="submit">SIGN IN</button>
+    </form>
+    <div class="or"><span>or</span></div>
+    <button class="google" id="authGoogle" type="button"><svg viewBox="0 0 48 48" width="20" height="20"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>Continue with Google</button>
+    <p class="authmsg" id="authMsg"></p>
+    <p class="small">No account yet, or forgot your password? Use <a href="https://progress-pad-lemon.vercel.app" target="_blank" rel="noopener">Progress Pad</a>, then come back here.</p>
+  </div>
+</section>
+
+<div class="app" id="app" hidden>
+  <!-- Library -->
+  <aside class="side" id="side">
+    <div class="brand"><img src="/logo.png" alt="Progress Today"><div><b>MemoPad</b><small>Voice memo affirmations</small></div><button class="closeside" id="closeSide" title="Close">✕</button></div>
+    <div class="drop" id="drop"><b>Drop audio here</b><small>MP3, WAV, M4A or a voice memo</small><button class="choose" id="chooseBtn" type="button">Choose file</button></div>
+    <input type="file" id="file" accept="audio/*,video/*,.m4a,.mp3,.wav,.aac,.mov,.mp4" multiple hidden>
+    <div class="libsearch"><input id="libq" type="search" placeholder="Search titles and transcripts" autocomplete="off"></div>
+    <div class="cats" id="cats"></div>
+    <div class="lib" id="lib"></div>
+    <div class="ptby"><span>Did you get the message?</span></div>
+  </aside>
+  <div class="scrim" id="scrim"></div>
+
+  <!-- Player -->
+  <section class="card" id="card">
+    <div class="emptycard" id="emptycard">
+      <img class="emptymark" src="/icon-192.png" alt="">
+      <h2>Welcome to MemoPad</h2>
+      <p class="tagline">Did you get the message?</p>
+      <p>Add an MP3 or voice memo. You'll get a colourful waveform, chapters, and a transcript that lights up word by word.</p>
+      <button class="pill" id="browse">CHOOSE AUDIO</button>
+    </div>
+    <div class="grab"></div>
+    <div class="top">
+      <button class="circ" id="moreBtn" title="Library">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+      </button>
+      <img class="toplogo" src="/logo.png" alt="Progress Today">
+      <button class="circ ok" id="doneBtn" title="Save">✓</button>
+    </div>
+    <div class="title">
+      <h1 id="ttl" contenteditable="true" spellcheck="false">Untitled</h1>
+      <div class="sub" id="sub"></div>
+      <div class="meta" id="meta">
+        <button class="chip" id="catBtn" type="button">Add category</button>
+        <label class="share" id="shareWrap" title="Other signed-in Progress Today users can play it, but not edit it"><input type="checkbox" id="shareTog"><span>Share to MemoPad</span></label>
+        <span class="ro" id="roTag">Shared with you · play only</span>
+      </div>
+    </div>
+    <div class="view" id="view">
+      <div id="waveWrap"><canvas id="wave"></canvas><canvas id="ruler"></canvas></div>
+      <div id="tx"></div>
+      <div class="searchbar" id="sbar">
+        <span style="font-size:17px">⌕</span>
+        <input id="q" placeholder="Search" autocomplete="off">
+        <span class="cnt" id="qc"></span>
+        <button id="qp" title="Previous">▲</button><button id="qn" title="Next">▼</button>
+      </div>
+    </div>
+    <div class="status" id="status"></div>
+    <div class="prog" id="prog"><i></i></div>
+    <div class="clock" id="clock">00:00.00</div>
+    <div class="chapnow" id="chapnow"></div>
+    <div class="ctrls">
+      <button class="skip" id="back" title="Back 15s (←)"><svg viewBox="0 0 52 52" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round"><path d="M26 9a17 17 0 1 1-15.6 10.2"/><path d="M26 3v12l-8-6z" fill="#fff" stroke="none"/><text x="26" y="33" font-size="15" font-weight="800" text-anchor="middle" fill="#fff" stroke="none" font-family="Poppins">15</text></svg></button>
+      <button class="play" id="play" title="Play (Space)"><svg viewBox="0 0 64 64"><path id="playIcon" d="M18 10 L54 32 L18 54 Z" fill="#fff" stroke="#fff" stroke-width="4" stroke-linejoin="round"/></svg></button>
+      <button class="skip" id="fwd" title="Forward 15s (→)"><svg viewBox="0 0 52 52" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round"><path d="M26 9a17 17 0 1 0 15.6 10.2"/><path d="M26 3v12l8-6z" fill="#fff" stroke="none"/><text x="26" y="33" font-size="15" font-weight="800" text-anchor="middle" fill="#fff" stroke="none" font-family="Poppins">15</text></svg></button>
+    </div>
+    <div class="bottom">
+      <button class="round" id="txBtn" title="Transcript (T)"><svg viewBox="0 0 28 28" fill="none" stroke="#fff" stroke-width="2.2" stroke-linejoin="round"><path d="M5 6h18a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-9l-5 4v-4H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z"/><path d="M10 11.5h2.5v2.5c0 1.4-.8 2.3-2 2.6M15.5 11.5H18v2.5c0 1.4-.8 2.3-2 2.6" stroke-width="2"/></svg></button>
+      <button class="pill" id="mainBtn">TRANSCRIBE</button>
+      <button class="round" id="setBtn" title="Settings"><svg viewBox="0 0 28 28" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round"><path d="M4 8h20M4 14h20M4 20h20"/><circle cx="17" cy="8" r="2.4" fill="#161618"/><circle cx="10" cy="14" r="2.4" fill="#161618"/><circle cx="19" cy="20" r="2.4" fill="#161618"/></svg></button>
+    </div>
+    <div class="pop" id="pop">
+      <h5>Storage</h5>
+      <div class="store"><div class="storebar"><i id="storeBar"></i></div><div class="storetxt" id="storeTxt">Checking…</div></div>
+      <h5>Playback speed</h5>
+      <div class="seg" id="speed"><button data-v="0.75">0.75×</button><button data-v="1" class="on">1×</button><button data-v="1.25">1.25×</button><button data-v="1.5">1.5×</button><button data-v="2">2×</button></div>
+      <h5>Waveform colours</h5>
+      <div class="seg" id="theme"><button data-v="pt" class="on">PT Bold</button><button data-v="cool">PT Cool</button><button data-v="rainbow">Rainbow</button></div>
+      <div class="row"><span>Loop current chapter</span><input type="checkbox" id="loop"></div>
+      <h5 style="margin-top:10px">Speech model</h5>
+      <div class="seg" id="model"><button data-v="Xenova/whisper-tiny.en">Fast</button><button data-v="Xenova/whisper-base.en" class="on">Balanced</button><button data-v="Xenova/whisper-small.en">Best</button></div>
+      <button class="act" id="convBtn">Convert or compress audio</button>
+      <button class="act own" id="pasteBtn">Paste my own script</button>
+      <button class="act own" id="srtBtn">Import transcript (SRT)</button>
+      <button class="act" id="expTxt">Download transcript (.txt)</button>
+      <button class="act" id="expSrt">Download captions (.srt)</button>
+      <button class="act own danger" id="delBtn">Delete this memo</button>
+      <input type="file" id="srtFile" accept=".srt,.vtt" hidden>
+      <div class="who"><span id="whoTxt"></span><button id="signOut" type="button">Sign out</button></div>
+    </div>
+  </section>
+
+  <!-- Chapters -->
+  <aside class="chaps">
+    <h3>Chapters</h3>
+    <div class="hint">Touch points through the track. Tap to jump, double tap a name to rename.</div>
+    <div class="overview" id="ovWrap"><canvas id="ov"></canvas></div>
+    <div class="clist" id="clist"></div>
+    <button class="addch" id="addch">＋ Add chapter here (C)</button>
+  </aside>
+</div>
+
+<!-- Category picker -->
+<div class="cv" id="catDlg"><div class="box small">
+  <h3>Category</h3>
+  <div class="catpick" id="catPick"></div>
+  <div class="newcat"><input id="newCat" placeholder="New category" maxlength="30"><button id="newCatGo" type="button">Add</button></div>
+  <div class="acts"><button id="catClose" type="button">CLOSE</button></div>
+</div></div>
+
+<!-- Converter -->
+<div class="cv" id="cv"><div class="box">
+  <h3>Convert and compress</h3>
+  <p class="lead" id="cvLead"></p>
+  <div class="pick" id="cvPick">Choose or drop an audio or video file</div>
+  <input type="file" id="cvFile" accept="audio/*,video/*,.m4a,.mp3,.wav,.mov,.mp4" hidden>
+  <div class="info" id="cvInfo"></div>
+  <h5>Quality</h5>
+  <div class="presets" id="cvPresets">
+    <div class="pre" data-p="voice"><b>Voice memo</b><small>Mono, 64 kbps · about 0.5 MB a minute</small></div>
+    <div class="pre on" data-p="standard"><b>Standard</b><small>Mono, 96 kbps · about 0.7 MB a minute</small></div>
+    <div class="pre" data-p="music"><b>Music</b><small>Stereo, 128 kbps · about 1 MB a minute</small></div>
+    <div class="pre" data-p="high"><b>High quality</b><small>Stereo, 192 kbps · about 1.4 MB a minute</small></div>
+  </div>
+  <h5>Options</h5>
+  <div class="opt"><span>Format</span><span class="seg" style="margin:0;width:150px" id="cvFmt"><button data-v="mp3" class="on">MP3</button><button data-v="wav">WAV</button></span></div>
+  <div class="opt"><span>Fit under a size (MB)</span><span><input type="checkbox" id="cvFitOn"> <input type="number" id="cvFit" value="20" min="1" step="1"></span></div>
+  <div class="opt"><span>Trim silence at start and end</span><input type="checkbox" id="cvTrim" checked></div>
+  <div class="opt"><span>Even out the volume</span><input type="checkbox" id="cvNorm" checked></div>
+  <div class="est"><span id="cvEstL">Estimated size</span><b id="cvEst">-</b></div>
+  <div class="acts">
+    <button id="cvCancel">CLOSE</button>
+    <button id="cvGo" disabled>COMPRESS + DOWNLOAD</button>
+    <button class="go" id="cvAdd" disabled>COMPRESS + ADD</button>
+  </div>
+  <div class="bar2" id="cvBar"><i></i></div>
+  <div class="msg" id="cvMsg"></div>
+</div></div>
+
+<div class="toast" id="toast"></div>
+<audio id="audio" preload="auto" playsinline></audio>
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>

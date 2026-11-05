@@ -683,9 +683,14 @@ function updateMain() {
   if (busyFor(cur)) { b.textContent = 'TRANSCRIBING…'; b.disabled = true; return; }
   if (cur && txQueue.includes(cur)) { b.textContent = 'WAITING…'; b.disabled = true; return; }
   if (upBusy) { b.textContent = 'ADDING…'; b.disabled = true; return; }
-  b.disabled = false; b.textContent = cur && cur.words.length ? 'ADD CHAPTER' : 'TRANSCRIBE';
+  b.disabled = false;
+  b.classList.toggle('fav', !!(cur && cur.words.length));
+  if (cur && cur.words.length) { const sn = nowSentence(); b.textContent = sn && favIndex(sn[0], sn[1]) >= 0 ? '★ FAVOURITED' : '☆ FAVOURITE'; }
+  else b.textContent = 'TRANSCRIBE';
 }
-$('mainBtn').onclick = () => { if (!cur || !isOwn(cur)) return; if (cur.words.length) addChapter(); else { if (lowPower && cur.duration > 600 && !confirm(`This track is ${Math.round(cur.duration / 60)} minutes long. Transcribing it on a phone takes a long time and can make the app slow. It works best on a computer, or you can paste your written script in Settings. Transcribe here anyway?`)) return; enqueueTranscribe(cur); } };
+// the main button saves the affirmation you are hearing right now (it also goes to Progress Pad Quotes)
+const nowSentence = () => cur && cur.words.length ? sentenceAt(Math.max(0, activeWord(audio.currentTime))) : null;
+$('mainBtn').onclick = () => { if (!cur) return; if (cur.words.length) { const [j, k] = nowSentence(); toggleFav(j, k); updateMain(); return; } if (!isOwn(cur)) return; { if (lowPower && cur.duration > 600 && !confirm(`This track is ${Math.round(cur.duration / 60)} minutes long. Transcribing it on a phone takes a long time and can make the app slow. It works best on a computer, or you can paste your written script in Settings. Transcribe here anyway?`)) return; enqueueTranscribe(cur); } };
 function prog(p) { $('prog').style.display = p == null ? 'none' : 'block'; $('prog').firstChild.style.width = (p || 0) + '%'; }
 // automatic transcription, like Voice Memos: every new memo joins a queue and is transcribed in the background
 // phones and small tablets: transcribing a long track by itself can freeze the app, so only short ones run automatically
@@ -801,12 +806,13 @@ $('expSrt').onclick = () => {
 };
 
 // ---------- main loop ----------
-let ovTick = 0, looping = false;
+let favTick = 0, ovTick = 0, looping = false;
 function loop() {
   if (cur) {
     const t = audio.currentTime; $('clock').textContent = clockFmt(t);
     const k = chapterAt(t); if (k !== lastChap) { lastChap = k; $('chapnow').textContent = k >= 0 && cur.chapters.length > 1 ? `Chapter ${k + 1} · ${cur.chapters[k].title}` : ''; $('clist').querySelectorAll('.chap').forEach(el => el.classList.toggle('on', +el.dataset.k === k)); updateMediaSession(); }
     if (repeatMode === 'ch' && !pl && !rep && !audio.paused && k >= 0) { const end = cur.chapters[k + 1]?.t ?? cur.duration; if (t >= end - 0.05) audio.currentTime = cur.chapters[k].t; }
+    if (cur.words.length && ++favTick % 15 === 0) updateMain();
     tickStats(t); tickPlaylist(t); tickRep(t); if (!$('reader').hidden) tickReader(t);
     updateTranscript(); if (++ovTick % 6 === 0) drawOverview();
   }

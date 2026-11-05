@@ -80,6 +80,8 @@
     <div class="view" id="view">
       <div id="waveWrap"><canvas id="wave"></canvas><canvas id="ruler"></canvas></div>
       <div id="tx"></div>
+      <button class="readic" id="readIc" title="Read-along mode" aria-label="Read-along mode"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+      <div class="repbar" id="repbar" hidden></div>
       <div class="searchbar mini" id="sbar">
         <button class="sopen" id="sOpen" title="Search the transcript" aria-label="Search the transcript"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg></button>
         <input id="q" placeholder="Search" autocomplete="off">
@@ -91,6 +93,7 @@
     <div class="prog" id="prog"><i></i></div>
     <div class="clock" id="clock">00:00.00</div>
     <div class="chapnow" id="chapnow"></div>
+    <div class="plnow" id="plnow" hidden></div>
     <div class="ctrls">
       <button class="chskip" id="prevCh" title="Previous chapter"><svg viewBox="0 0 32 32" fill="#fff"><rect x="6" y="7" width="3.4" height="18" rx="1.2"/><path d="M26 7.5v17a1 1 0 0 1-1.5.9L11 16.9a1 1 0 0 1 0-1.8l13.5-8.5a1 1 0 0 1 1.5.9z"/></svg></button>
       <button class="skip" id="back" title="Back 15s (←)"><svg viewBox="0 0 52 52" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round"><path d="M26 9a17 17 0 1 1-15.6 10.2"/><path d="M26 3v12l-8-6z" fill="#fff" stroke="none"/><text x="26" y="33" font-size="15" font-weight="800" text-anchor="middle" fill="#fff" stroke="none" font-family="Poppins">15</text></svg></button>
@@ -112,9 +115,12 @@
       <div class="seg" id="theme"><button data-v="pt" class="on">PT Bold</button><button data-v="cool">PT Cool</button><button data-v="rainbow">Rainbow</button></div>
       <h5>Sleep timer <span class="sleepleft" id="sleepLeft"></span></h5>
       <div class="seg" id="sleep"><button data-v="off" class="on">Off</button><button data-v="15">15m</button><button data-v="30">30m</button><button data-v="60">60m</button><button data-v="ch">Chapter</button></div>
-      <div class="row"><span>Loop current chapter</span><input type="checkbox" id="loop"></div>
+      <h5>Repeat</h5>
+      <div class="seg" id="repeat"><button data-v="off" class="on">Off</button><button data-v="track">Track</button><button data-v="ch">Chapter</button></div>
       <h5 style="margin-top:10px">Speech model</h5>
       <div class="seg" id="model"><button data-v="Xenova/whisper-tiny.en">Fast</button><button data-v="Xenova/whisper-base.en" class="on">Balanced</button><button data-v="Xenova/whisper-small.en">Best</button></div>
+      <button class="act" id="offBtn">Save for offline listening</button>
+      <button class="act" id="readBtn">Read-along mode</button>
       <button class="act" id="convBtn">Convert or compress audio</button>
       <button class="act own" id="pasteBtn">Paste your written script</button>
       <button class="act own" id="srtBtn">Import transcript (SRT)</button>
@@ -183,6 +189,24 @@
 </div></div>
 
 <div class="toast" id="toast"></div>
+<div class="cv" id="plDlg"><div class="box small">
+  <h3 id="plHead">Add to a playlist</h3>
+  <div class="pllist" id="plList"></div>
+  <div class="newcat"><input id="plNew" placeholder="New playlist name" maxlength="40"><button id="plNewGo" type="button">Create</button></div>
+  <div class="acts"><button id="plClose" type="button">CLOSE</button></div>
+</div></div>
+<div class="cv" id="plEdit"><div class="box small">
+  <h3 id="peHead">Playlist</h3>
+  <div class="pllist" id="peList"></div>
+  <div class="acts"><button id="peDel" type="button">DELETE PLAYLIST</button><button class="go" id="pePlay" type="button">PLAY</button></div>
+  <div class="acts" style="margin-top:8px"><button id="peClose" type="button">CLOSE</button></div>
+</div></div>
+<div class="reader" id="reader" hidden>
+  <button class="rclose" id="rClose" aria-label="Close read-along">✕</button>
+  <div class="rch" id="rCh"></div>
+  <div class="rtext" id="rText"></div>
+  <div class="rctl"><button id="rPrev" aria-label="Previous affirmation">‹</button><button class="rplay" id="rPlay" aria-label="Play or pause"></button><button id="rNext" aria-label="Next affirmation">›</button></div>
+</div>
 <audio id="audio" preload="auto" playsinline></audio>
 <script type="module" src="/src/main.js"></script>
 </body>

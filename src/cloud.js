@@ -64,4 +64,6 @@ export function cachePut(t) {
 export const cacheDel = id => Promise.all([req('memos', 'readwrite', s => s.delete(id)), req('audio', 'readwrite', s => s.delete(id))]);
 export const audioGet = id => req('audio', 'readonly', s => s.get(id));
 export const audioPut = (id, blob) => req('audio', 'readwrite', s => s.put(blob, id));
+export const audioDel = id => req('audio', 'readwrite', s => s.delete(id));
+export const audioKeys = () => req('audio', 'readonly', s => s.getAllKeys()).then(a => a || []);
 export const cacheClear = () => Promise.all([req('memos', 'readwrite', s => s.clear()), req('audio', 'readwrite', s => s.clear())]);

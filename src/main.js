@@ -1,7 +1,7 @@
 import './style.css';
 import {
   supabase, configured, BUCKET, TABLE, FREE_STORAGE, MAX_FILE,
-  rowToTrack, trackToRow, cacheAll, cachePut, cacheDel, audioGet, audioPut, cacheClear,
+  rowToTrack, trackToRow, cacheAll, cachePut, cacheDel, audioGet, audioPut, audioDel, audioKeys, cacheClear,
 } from './cloud.js';
 import { transcriptChapters } from './chapters.js';
 import { parseScript, alignToAsr, spreadOverVoice, scriptChapters } from './script.js';
@@ -93,6 +93,7 @@ async function start(u) {
   // instant: show the offline cache, then refresh from Supabase
   const cached = (await cacheAll()).filter(t => t.user_id === u.id || t.is_shared);
   tracks = cached.map(t => ({ ...t, peaks: t.peaks ? Float32Array.from(t.peaks) : null })).sort((a, b) => b.added - a.added);
+  loadPlaylists(); offline = new Set(await audioKeys());
   renderCats(); renderLib(); if (tracks[0]) select(tracks[0]); else showEmpty();
   requestAnimationFrame(loop);
   await refresh();
@@ -234,21 +235,23 @@ function renderLib() {
     list.forEach(t => {
       const d = document.createElement('div'); d.className = 'item' + (t === cur ? ' on' : '') + (t === cur && !audio.paused ? ' playing' : '');
       const n = t.chapters.length;
-      d.innerHTML = `<span class="dot"></span><div style="min-width:0;flex:1"><div class="nm">${esc(t.title)}</div><div class="mt"><span>${short(t.duration)}</span><span>· ${n} chapter${n === 1 ? '' : 's'}</span>${t.category ? `<span class="cat">${esc(t.category)}</span>` : ''}${isOwn(t) && t.is_shared ? '<span class="sh">· shared</span>' : ''}${txing === t ? '<span class="sh">· transcribing…</span>' : txQueue.includes(t) ? '<span class="sh">· waiting to transcribe</span>' : ''}</div></div>`;
-      d.onclick = () => { select(t); closeLib(); };
+      d.innerHTML = `<span class="dot"></span><div style="min-width:0;flex:1"><div class="nm">${esc(t.title)}</div><div class="mt"><span>${short(t.duration)}</span><span>· ${n} chapter${n === 1 ? '' : 's'}</span>${t.category ? `<span class="cat">${esc(t.category)}</span>` : ''}${isOwn(t) && t.is_shared ? '<span class="sh">· shared</span>' : ''}${offline.has(t.id) ? '<span class="sh">· offline</span>' : ''}${txing === t ? '<span class="sh">· transcribing…</span>' : txQueue.includes(t) ? '<span class="sh">· waiting to transcribe</span>' : ''}</div></div>`;
+      d.onclick = () => { stopPlaylist(); select(t); closeLib(); };
+      { const a = document.createElement('button'); a.className = 'idel iadd'; a.title = 'Add to a playlist'; a.setAttribute('aria-label', 'Add ' + t.title + ' to a playlist'); a.textContent = '+'; a.onclick = e => { e.stopPropagation(); openAddPl({ m: t.id, label: t.title }); }; d.appendChild(a); }
       if (isOwn(t)) { const x = document.createElement('button'); x.className = 'idel'; x.title = 'Delete'; x.setAttribute('aria-label', 'Delete ' + t.title); x.innerHTML = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>'; x.onclick = e => { e.stopPropagation(); deleteTrack(t); }; d.appendChild(x); }
       L.appendChild(d);
     });
   };
+  renderPlaylists(L, q);
   section('Your affirmations', mine);
   section('Shared in MemoPad', shared);
-  if (!mine.length && !shared.length) L.innerHTML = `<div class="none">${tracks.length ? 'Nothing matches.' : 'No memos yet. Add your first one above.'}</div>`;
+  if (!mine.length && !shared.length && !L.querySelector('.pl')) L.innerHTML = `<div class="none">${tracks.length ? 'Nothing matches.' : 'No memos yet. Add your first one above.'}</div>`;
 }
 function showEmpty() { cur = null; $('emptycard').style.display = 'flex'; setSrc(null); $('clist').innerHTML = ''; drawOverview(); }
 function setSrc(u) { if (srcUrl && srcUrl.startsWith('blob:')) URL.revokeObjectURL(srcUrl); srcUrl = u; if (u) audio.src = u; else audio.removeAttribute('src'); }
 
 async function select(t) {
-  if (cur === t) return; savePos(true); cur = t; audio.pause(); setSrc(null);
+  if (cur === t) return; savePos(true); cur = t; audio.pause(); setSrc(null); stopRep();
   const own = isOwn(t);
   document.body.classList.toggle('readonly', !own);
   $('ttl').contentEditable = own ? 'true' : 'false';
@@ -269,10 +272,11 @@ async function loadAudio(t) {
   if (cur !== t) return;
   if (error) { status('Could not load this audio. Check your connection.', true); return; }
   setSrc(data.signedUrl); audio.playbackRate = speed(); resumeAt(t);
-  fetch(data.signedUrl).then(r => r.ok ? r.blob() : null).then(b => { if (b) { t.blob = b; audioPut(t.id, b); } }).catch(() => {});
+  fetch(data.signedUrl).then(r => r.ok ? r.blob() : null).then(b => { if (b) { t.blob = b; keepOffline(t, b); } }).catch(() => {});
 }
 // resume where you left off: each memo remembers its spot
 function resumeAt(t) {
+  if (pl) return;
   const p = +localStorage.getItem('mp.pos.' + t.id) || 0; if (p < 5 || p > (t.duration || 1e9) - 10) return;
   const go = () => { if (cur === t) { audio.currentTime = p; toast('Carrying on from ' + short(p) + '.', false, 2500); } };
   audio.readyState >= 1 ? go() : audio.addEventListener('loadedmetadata', go, { once: true });
@@ -284,7 +288,7 @@ function savePos(force) {
 }
 audio.addEventListener('timeupdate', () => savePos(false));
 audio.addEventListener('pause', () => savePos(true));
-audio.addEventListener('ended', () => cur && localStorage.removeItem('mp.pos.' + cur.id));
+audio.addEventListener('ended', () => { if (cur) localStorage.removeItem('mp.pos.' + cur.id); if (pl) nextInPlaylist(); });
 addEventListener('pagehide', () => savePos(true));
 
 // sleep timer: fades out gently, then pauses
@@ -316,7 +320,7 @@ async function getBlob(t) {
   const c = await audioGet(t.id); if (c) return t.blob = c;
   const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(t.audio_path, 600);
   if (error) throw error;
-  const b = await (await fetch(data.signedUrl)).blob(); t.blob = b; audioPut(t.id, b); return b;
+  const b = await (await fetch(data.signedUrl)).blob(); t.blob = b; keepOffline(t, b); return b;
 }
 const speed = () => +document.querySelector('#speed .on').dataset.v;
 function renderMeta() {
@@ -489,14 +493,15 @@ function renderChapters() {
   cur.chapters.sort((a, b) => a.t - b.t);
   cur.chapters.forEach((c, k) => {
     const d = document.createElement('div'); d.className = 'chap'; d.style.setProperty('--c', CHAP_COLS[k % CHAP_COLS.length]); d.dataset.k = k;
-    d.innerHTML = `<div class="n">${k + 1}</div><div style="flex:1;min-width:0"><div class="t"></div><div class="tm">${short(c.t)}</div></div>${own ? '<button class="del" title="Delete">✕</button>' : ''}`;
+    d.innerHTML = `<div class="n">${k + 1}</div><div style="flex:1;min-width:0"><div class="t"></div><div class="tm">${short(c.t)}</div></div><button class="del add" title="Add to a playlist">+</button>${own ? '<button class="del" title="Delete">✕</button>' : ''}`;
     const tt = d.querySelector('.t'); tt.textContent = c.title;
+    d.querySelector('.add').onclick = e => { e.stopPropagation(); const nx = cur.chapters[k + 1]; openAddPl({ m: cur.id, t0: c.t, t1: nx ? nx.t : null, label: `${cur.title} · ${c.title}` }); };
     d.onclick = () => { if (tt.isContentEditable) return; audio.currentTime = c.t; };
     if (own) {
       tt.ondblclick = e => { e && e.stopPropagation && e.stopPropagation(); tt.contentEditable = 'true'; tt.focus(); document.getSelection().selectAllChildren(tt); };
       tt.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); tt.blur(); } };
       tt.onblur = () => { tt.contentEditable = 'false'; c.title = tt.textContent.trim() || c.title; save(); renderTranscript(); renderLib(); };
-      d.querySelector('.del').onclick = e => { e.stopPropagation(); cur.chapters.splice(k, 1); if (!cur.chapters.length) cur.chapters.push({ t: 0, title: 'Start' }); save(); renderChapters(); renderTranscript(); drawOverview(); renderLib(); };
+      d.querySelector('.del:not(.add)').onclick = e => { e.stopPropagation(); cur.chapters.splice(k, 1); if (!cur.chapters.length) cur.chapters.push({ t: 0, title: 'Start' }); save(); renderChapters(); renderTranscript(); drawOverview(); renderLib(); };
     }
     L.appendChild(d);
   });
@@ -529,7 +534,7 @@ function renderTranscript() {
     const prev = cur.words[i - 1];
     while (ci < chStarts.length && chStarts[ci] <= w.start + 0.25) { const h = document.createElement('div'); h.className = 'ch'; const c = cur.chapters[ci]; h.textContent = `${ci + 1}. ${c.title}`; h.onclick = () => audio.currentTime = c.t; frag.appendChild(h); p = null; ci++; }
     if (!p || (hasLines ? w.p : (prev && w.start - prev.end > 1.1 && /[.!?]$/.test(prev.text)))) { p = document.createElement('p'); frag.appendChild(p); }
-    const s = document.createElement('span'); s.className = 'w'; s.textContent = w.text; s.onclick = () => { audio.currentTime = Math.max(0, w.start - 0.05); };
+    const s = document.createElement('span'); s.className = 'w'; s.textContent = w.text; s.onclick = () => { audio.currentTime = Math.max(0, w.start - 0.05); showRepBar(i); };
     p.appendChild(s); p.appendChild(document.createTextNode(' ')); wordEls.push(s);
   });
   T.appendChild(frag);
@@ -727,7 +732,8 @@ function loop() {
   if (cur) {
     const t = audio.currentTime; $('clock').textContent = clockFmt(t);
     const k = chapterAt(t); if (k !== lastChap) { lastChap = k; $('chapnow').textContent = k >= 0 && cur.chapters.length > 1 ? `Chapter ${k + 1} · ${cur.chapters[k].title}` : ''; $('clist').querySelectorAll('.chap').forEach(el => el.classList.toggle('on', +el.dataset.k === k)); updateMediaSession(); }
-    if ($('loop').checked && !audio.paused && k >= 0) { const end = cur.chapters[k + 1]?.t ?? cur.duration; if (t >= end - 0.05) audio.currentTime = cur.chapters[k].t; }
+    if (repeatMode === 'ch' && !pl && !rep && !audio.paused && k >= 0) { const end = cur.chapters[k + 1]?.t ?? cur.duration; if (t >= end - 0.05) audio.currentTime = cur.chapters[k].t; }
+    tickPlaylist(t); tickRep(t); if (!$('reader').hidden) tickReader(t);
     updateTranscript(); if (++ovTick % 6 === 0) drawOverview();
   }
   drawWave(); requestAnimationFrame(loop);
@@ -835,3 +841,162 @@ async function cvRun(addToLib) {
   });
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('/sw.js').catch(() => {});
 })();
+
+
+// ---------- repeat: off, the whole track, or the current chapter ----------
+let repeatMode = localStorage.getItem('mp.repeat') || 'off';
+function setRepeat(v) {
+  repeatMode = v; localStorage.setItem('mp.repeat', v); audio.loop = v === 'track' && !pl;
+  document.querySelectorAll('#repeat button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
+}
+document.querySelectorAll('#repeat button').forEach(b => b.onclick = () => setRepeat(b.dataset.v));
+setRepeat(repeatMode);
+
+// ---------- offline: memos whose audio is saved on this device ----------
+let offline = new Set();
+function keepOffline(t, b) { audioPut(t.id, b).then(() => { if (!offline.has(t.id)) { offline.add(t.id); renderLib(); updateOffBtn(); } }); }
+function updateOffBtn() { const b = $('offBtn'); if (!cur) return; b.textContent = offline.has(cur.id) ? 'Saved for offline ✓  (tap to remove)' : 'Save for offline listening'; }
+$('offBtn').onclick = async () => {
+  const t = cur; if (!t) return;
+  if (offline.has(t.id)) { await audioDel(t.id); offline.delete(t.id); toast('Removed from this device. It still plays online.'); }
+  else {
+    if (!navigator.onLine && !t.blob) { toast('Connect to the internet to save this memo.', true); return; }
+    toast('Saving for offline…', false, 20000);
+    try { const b = await getBlob(t); await audioPut(t.id, b); offline.add(t.id); navigator.storage?.persist?.(); toast('Saved. This memo now plays without signal.'); }
+    catch (e) { toast('Could not save: ' + e.message, true); }
+  }
+  updateOffBtn(); renderLib();
+};
+$('setBtn').addEventListener('click', updateOffBtn);
+
+// ---------- playlists (kept on this device) ----------
+let playlists = [], pl = null, addItem = null, editPl = null;
+const plKey = () => 'mp.playlists.' + (user ? user.id : 'x');
+function loadPlaylists() { try { playlists = JSON.parse(localStorage.getItem(plKey())) || []; } catch { playlists = []; } }
+function savePlaylists() { localStorage.setItem(plKey(), JSON.stringify(playlists)); renderLib(); }
+const itemLen = it => { const t = tracks.find(x => x.id === it.m); if (!t) return 0; return (it.t1 ?? t.duration) - (it.t0 || 0); };
+function renderPlaylists(L, q) {
+  const list = playlists.filter(p => !q || norm(p.name).includes(q)); if (!list.length) return;
+  const h = document.createElement('h4'); h.textContent = 'Playlists'; L.appendChild(h);
+  list.forEach(p => {
+    const d = document.createElement('div'); d.className = 'item pl' + (pl && pl.p === p ? ' playing' : '');
+    const len = p.items.reduce((a, it) => a + itemLen(it), 0);
+    d.innerHTML = `<span class="dot"></span><div style="min-width:0;flex:1"><div class="nm">${esc(p.name)}</div><div class="mt"><span>${p.items.length} item${p.items.length === 1 ? '' : 's'}</span><span>· ${short(len)}</span></div></div><button class="idel iplay" title="Play" aria-label="Play ${esc(p.name)}">▶</button>`;
+    d.onclick = () => openEditPl(p);
+    d.querySelector('.iplay').onclick = e => { e.stopPropagation(); startPlaylist(p, 0); closeLib(); };
+    L.appendChild(d);
+  });
+}
+function openAddPl(item) {
+  addItem = item; $('plHead').textContent = 'Add to a playlist'; const L = $('plList'); L.innerHTML = '';
+  if (!playlists.length) L.innerHTML = '<div class="none">No playlists yet. Name one below.</div>';
+  playlists.forEach(p => { const b = document.createElement('button'); b.type = 'button'; b.className = 'plpick'; b.textContent = `${p.name}  ·  ${p.items.length}`; b.onclick = () => addTo(p); L.appendChild(b); });
+  $('plNew').value = ''; $('plDlg').classList.add('open');
+}
+function addTo(p) { p.items.push({ ...addItem }); savePlaylists(); $('plDlg').classList.remove('open'); toast(`Added to "${p.name}".`); }
+$('plNewGo').onclick = () => { const n = $('plNew').value.trim(); if (!n) { $('plNew').focus(); return; } const p = { id: crypto.randomUUID(), name: n, items: [] }; playlists.push(p); addTo(p); };
+$('plNew').addEventListener('keydown', e => { if (e.key === 'Enter') $('plNewGo').click(); });
+$('plClose').onclick = () => $('plDlg').classList.remove('open');
+function openEditPl(p) {
+  editPl = p; $('peHead').textContent = p.name; const L = $('peList'); L.innerHTML = '';
+  if (!p.items.length) L.innerHTML = '<div class="none">Empty. Use + on a memo or a chapter to add it.</div>';
+  p.items.forEach((it, i) => {
+    const r = document.createElement('div'); r.className = 'perow';
+    r.innerHTML = `<span class="pn">${i + 1}</span><span class="pt"></span><span class="pm">${short(itemLen(it))}</span><button type="button" title="Move up" ${i ? '' : 'disabled'}>↑</button><button type="button" title="Remove">✕</button>`;
+    r.querySelector('.pt').textContent = it.label;
+    const [up, rm] = r.querySelectorAll('button');
+    up.onclick = () => { [p.items[i - 1], p.items[i]] = [p.items[i], p.items[i - 1]]; savePlaylists(); openEditPl(p); };
+    rm.onclick = () => { p.items.splice(i, 1); savePlaylists(); openEditPl(p); };
+    L.appendChild(r);
+  });
+  $('plEdit').classList.add('open');
+}
+$('pePlay').onclick = () => { $('plEdit').classList.remove('open'); if (editPl.items.length) { startPlaylist(editPl, 0); closeLib(); } };
+$('peDel').onclick = () => { if (!confirm(`Delete the playlist "${editPl.name}"? Your memos stay.`)) return; if (pl && pl.p === editPl) stopPlaylist(); playlists = playlists.filter(p => p !== editPl); savePlaylists(); $('plEdit').classList.remove('open'); };
+$('peClose').onclick = () => $('plEdit').classList.remove('open');
+['plDlg', 'plEdit'].forEach(id => $(id).addEventListener('click', e => { if (e.target.id === id) $(id).classList.remove('open'); }));
+async function startPlaylist(p, i) { pl = { p, i }; audio.loop = false; await playItem(); }
+function stopPlaylist() { if (!pl) return; pl = null; audio.loop = repeatMode === 'track'; updatePlNow(); renderLib(); }
+async function playItem() {
+  const { p, i } = pl, it = p.items[i]; const t = tracks.find(x => x.id === it.m);
+  updatePlNow(); renderLib();
+  if (!t) { nextInPlaylist(); return; }
+  if (cur !== t) await select(t);
+  if (!pl || pl.p !== p || pl.i !== i) return;
+  const go = () => { audio.currentTime = it.t0 || 0; audio.play().catch(() => {}); };
+  audio.readyState >= 1 ? go() : audio.addEventListener('loadedmetadata', go, { once: true });
+}
+function nextInPlaylist() {
+  if (!pl) return; pl.i++;
+  if (pl.i >= pl.p.items.length) { if (repeatMode !== 'off') pl.i = 0; else { const n = pl.p.name; stopPlaylist(); audio.pause(); toast(`"${n}" finished.`); return; } }
+  playItem();
+}
+function tickPlaylist(t) { if (!pl || audio.paused) return; const it = pl.p.items[pl.i]; if (it && it.t1 != null && cur && cur.id === it.m && t >= it.t1 - 0.05) nextInPlaylist(); }
+function updatePlNow() {
+  const el = $('plnow'); if (!pl) { el.hidden = true; return; }
+  el.hidden = false; el.innerHTML = `Playlist · ${esc(pl.p.name)} · ${pl.i + 1} of ${pl.p.items.length} <button type="button" id="plSkip" title="Next in playlist">›</button><button type="button" id="plStop" title="Stop playlist">✕</button>`;
+  $('plSkip').onclick = nextInPlaylist; $('plStop').onclick = stopPlaylist;
+}
+
+// ---------- sentences (one affirmation) in the transcript ----------
+const isEnd = x => /[.!?…]["'”’)]*$/.test(x) && !/^\d+[.)]$/.test(x);
+const isNum = x => /^\d+[.)]?$/.test(x);
+function sentenceAt(i) {
+  const W = cur.words; i = clamp(i, 0, W.length - 1); let j = i, k = i;
+  while (j > 0 && !isEnd(W[j - 1].text)) j--;
+  while (k < W.length - 1 && !isEnd(W[k].text)) k++;
+  while (j < k && isNum(W[j].text)) j++; // skip the spoken number, e.g. "12."
+  if (k - j < 24) return [j, k];
+  // a long run without full stops: break it into short phrases at pauses and commas
+  let a = j;
+  for (let q = j; q <= k; q++) {
+    const n = q - a + 1, gap = q < k ? W[q + 1].start - W[q].end : 9;
+    if (q === k || n >= 16 || (n >= 5 && (gap > 0.45 || /[,;:—–]$/.test(W[q].text)))) { if (i <= q) return [a, q]; a = q + 1; }
+  }
+  return [j, k];
+}
+const sentStart = j => Math.max(0, (dispSt[j] ?? cur.words[j].start) - 0.05);
+
+// ---------- repeat one affirmation 3, 5 or 10 times ----------
+let rep = null, repHide = 0;
+function showRepBar(i) {
+  if (!cur || !cur.words.length) return; const [j, k] = sentenceAt(i); if (rep) stopRep();
+  const b = $('repbar'); b.hidden = false; b.dataset.j = j; b.dataset.k = k;
+  b.innerHTML = `<span>Repeat this affirmation</span><button type="button" data-n="3">3×</button><button type="button" data-n="5">5×</button><button type="button" data-n="10">10×</button><button type="button" class="x" aria-label="Close">✕</button>`;
+  b.querySelectorAll('[data-n]').forEach(x => x.onclick = () => startRep(j, k, +x.dataset.n));
+  b.querySelector('.x').onclick = stopRep;
+  clearTimeout(repHide); repHide = setTimeout(() => { if (!rep) b.hidden = true; }, 6000);
+}
+function startRep(j, k, n) { clearTimeout(repHide); rep = { j, k, n, done: 0 }; audio.currentTime = sentStart(j); audio.play().catch(() => {}); repLabel(); }
+function repLabel() { const b = $('repbar'); b.hidden = false; b.innerHTML = `<span>Repeating ${rep.done + 1} of ${rep.n}</span><button type="button" class="x" aria-label="Stop repeating">STOP</button>`; b.querySelector('.x').onclick = stopRep; }
+function stopRep() { rep = null; clearTimeout(repHide); $('repbar').hidden = true; }
+function tickRep(t) {
+  if (!rep || audio.paused || !cur) return; const s0 = sentStart(rep.j), end = cur.words[rep.k].end + 0.35;
+  if (t < s0 - 2 || t > end + 2) { stopRep(); return; } // you moved somewhere else
+  if (t >= end) { rep.done++; if (rep.done >= rep.n) { stopRep(); return; } audio.currentTime = s0; repLabel(); }
+}
+
+// ---------- read-along: full screen, one affirmation at a time ----------
+let shownSent = -1, wake = null;
+async function openReader() {
+  if (!cur) return; $('pop').classList.remove('open'); $('reader').hidden = false; shownSent = -1; tickReader(audio.currentTime);
+  try { wake = await navigator.wakeLock?.request('screen'); } catch { wake = null; }
+}
+function closeReader() { $('reader').hidden = true; try { wake && wake.release(); } catch {} wake = null; }
+$('readBtn').onclick = openReader; $('readIc').onclick = openReader; $('rClose').onclick = closeReader;
+document.addEventListener('visibilitychange', async () => { if (!$('reader').hidden && document.visibilityState === 'visible') { try { wake = await navigator.wakeLock?.request('screen'); } catch {} } });
+function tickReader(t) {
+  $('rPlay').classList.toggle('on', !audio.paused);
+  const k = chapterAt(t); $('rCh').textContent = k >= 0 && cur.chapters.length > 1 ? cur.chapters[k].title : cur.title;
+  if (!cur.words.length) { if (shownSent !== -2) { $('rText').innerHTML = '<span class="rw now">No transcript yet.</span>'; shownSent = -2; } return; }
+  const a = Math.max(0, activeWord(t)); const [j, e] = sentenceAt(a);
+  if (j !== shownSent) {
+    shownSent = j; const R = $('rText'); R.innerHTML = ''; R.classList.remove('in'); void R.offsetWidth; R.classList.add('in');
+    for (let i = j; i <= e; i++) { const s = document.createElement('span'); s.className = 'rw'; s.dataset.i = i; s.textContent = cur.words[i].text; R.append(s, ' '); }
+  }
+  $('rText').querySelectorAll('.rw').forEach(s => { const i = +s.dataset.i; s.classList.toggle('past', i < a); s.classList.toggle('now', i === a); });
+}
+$('rPlay').onclick = togglePlay;
+$('rPrev').onclick = () => { if (!cur || !cur.words.length) return; const [j] = sentenceAt(Math.max(0, activeWord(audio.currentTime))); const t = audio.currentTime; const [pj] = t - sentStart(j) > 1.5 ? [j] : sentenceAt(Math.max(0, j - 1)); audio.currentTime = sentStart(pj); };
+$('rNext').onclick = () => { if (!cur || !cur.words.length) return; const [, e] = sentenceAt(Math.max(0, activeWord(audio.currentTime))); if (e + 1 < cur.words.length) audio.currentTime = sentStart(sentenceAt(e + 1)[0]); };
+addEventListener('keydown', e => { if (e.key === 'Escape' && !$('reader').hidden) closeReader(); });

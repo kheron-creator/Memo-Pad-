@@ -89,14 +89,15 @@ async function start(u) {
   if (user && user.id === u.id) return;
   user = u;
   $('auth').hidden = true; $('app').hidden = false;
-  $('whoTxt').textContent = u.email || 'Signed in';
+  $('whoTxt').textContent = u.email || 'Signed in'; $('whoSide').textContent = u.email || '';
   // instant: show the offline cache, then refresh from Supabase
   const cached = (await cacheAll()).filter(t => t.user_id === u.id || t.is_shared);
   tracks = cached.map(t => ({ ...t, peaks: t.peaks ? Float32Array.from(t.peaks) : null })).sort((a, b) => b.added - a.added);
-  loadPlaylists(); loadFavs(); offline = new Set(await audioKeys());
+  loadPlaylists(); loadFavs(); loadStats(); loadPP(); offline = new Set(await audioKeys());
   renderCats(); renderLib(); if (!openDeep()) { if (tracks[0]) select(tracks[0]); else showEmpty(); }
   requestAnimationFrame(loop);
   await refresh();
+  importSharedPlaylist();
   if (sessionStorage.getItem('mp.deep') && !openDeep()) { sessionStorage.removeItem('mp.deep'); toast('That memo is not shared with you, or it was removed.', true); }
   refreshStorage();
 }
@@ -779,7 +780,7 @@ function loop() {
     const t = audio.currentTime; $('clock').textContent = clockFmt(t);
     const k = chapterAt(t); if (k !== lastChap) { lastChap = k; $('chapnow').textContent = k >= 0 && cur.chapters.length > 1 ? `Chapter ${k + 1} · ${cur.chapters[k].title}` : ''; $('clist').querySelectorAll('.chap').forEach(el => el.classList.toggle('on', +el.dataset.k === k)); updateMediaSession(); }
     if (repeatMode === 'ch' && !pl && !rep && !audio.paused && k >= 0) { const end = cur.chapters[k + 1]?.t ?? cur.duration; if (t >= end - 0.05) audio.currentTime = cur.chapters[k].t; }
-    tickPlaylist(t); tickRep(t); if (!$('reader').hidden) tickReader(t);
+    tickStats(t); tickPlaylist(t); tickRep(t); if (!$('reader').hidden) tickReader(t);
     updateTranscript(); if (++ovTick % 6 === 0) drawOverview();
   }
   drawWave(); requestAnimationFrame(loop);
@@ -974,7 +975,7 @@ async function playItem() {
 }
 function nextInPlaylist() {
   if (!pl) return; pl.i++;
-  if (pl.i >= pl.p.items.length) { if (repeatMode !== 'off') pl.i = 0; else { const n = pl.p.name; stopPlaylist(); audio.pause(); toast(`"${n}" finished.`); return; } }
+  if (pl.i >= pl.p.items.length) { if (repeatMode !== 'off') pl.i = 0; else { const n = pl.p.name; stopPlaylist(); audio.pause(); toast(`"${n}" finished.`); logListen(`Listened to the "${n}" playlist on MemoPad`, 'pl:' + n); return; } }
   playItem();
 }
 function tickPlaylist(t) { if (!pl || audio.paused) return; const it = pl.p.items[pl.i]; if (it && it.t1 != null && cur && cur.id === it.m && t >= it.t1 - 0.05) nextInPlaylist(); }
@@ -1077,4 +1078,100 @@ function renderFavs(L, q) {
     d.querySelector('.idel').onclick = e => { e.stopPropagation(); favs.splice(favs.indexOf(f), 1); localStorage.setItem(favKey(), JSON.stringify(favs)); markFavs(); renderLib(); };
     L.appendChild(d);
   });
+}
+
+
+// ---------- listening stats and streaks (this device) ----------
+const dayOf = (d = new Date()) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/London' }).format(d);
+let stats = { days: {}, tracks: {} }, statSaved = 0, lastTick = 0, lastPos = -1, heard = {};
+const statKey = () => 'mp.stats.' + (user ? user.id : 'x');
+function loadStats() { try { stats = JSON.parse(localStorage.getItem(statKey())) || stats; } catch {} stats.days ||= {}; stats.tracks ||= {}; statLine(); }
+function tickStats(t) {
+  const now = performance.now(), dt = (now - lastTick) / 1000; lastTick = now;
+  if (!cur || audio.paused || dt <= 0 || dt > 2) { lastPos = t; return; }
+  const day = dayOf(); stats.days[day] = (stats.days[day] || 0) + dt; stats.tracks[cur.id] = (stats.tracks[cur.id] || 0) + dt;
+  // a "finished listen": you heard most of the track (skips and seeks don't count)
+  const d = t - lastPos; lastPos = t;
+  if (d > 0 && d < 2) { heard[cur.id] = (heard[cur.id] || 0) + d; if (cur.duration && heard[cur.id] >= cur.duration * 0.85) { heard[cur.id] = -1e9; finishedTrack(cur); } }
+  if (now - statSaved > 10000) { statSaved = now; localStorage.setItem(statKey(), JSON.stringify(stats)); statLine(); }
+}
+function streaks() {
+  const has = d => (stats.days[d] || 0) >= 60; let cur = 0, best = 0, run = 0;
+  const d = new Date(); if (!has(dayOf(d))) d.setDate(d.getDate() - 1); // today still counts until midnight
+  while (has(dayOf(d))) { cur++; d.setDate(d.getDate() - 1); }
+  Object.keys(stats.days).sort().forEach((k, i, a) => { if (!has(k)) { run = 0; return; } const p = a[i - 1]; const prev = new Date(k + 'T12:00:00'); prev.setDate(prev.getDate() - 1); run = p && has(p) && dayOf(prev) === p ? run + 1 : 1; best = Math.max(best, run); });
+  return { cur, best: Math.max(best, cur) };
+}
+const mins = s => s < 3600 ? `${Math.round(s / 60)} min` : `${(s / 3600).toFixed(1)} h`;
+function statLine() { const s = streaks(), today = stats.days[dayOf()] || 0; $('statTxt').textContent = `${s.cur ? s.cur + '-day streak · ' : ''}${mins(today)} today`; }
+function openDash() {
+  localStorage.setItem(statKey(), JSON.stringify(stats));
+  const s = streaks(), today = stats.days[dayOf()] || 0, all = Object.values(stats.days).reduce((a, b) => a + b, 0);
+  let week = 0; const d = new Date(); for (let i = 0; i < 7; i++) { week += stats.days[dayOf(d)] || 0; d.setDate(d.getDate() - 1); }
+  const tile = (v, l) => `<div class="dtile"><b>${v}</b><span>${l}</span></div>`;
+  $('dGrid').innerHTML = tile(mins(today), 'today') + tile(mins(week), 'last 7 days') + tile(`${s.cur} day${s.cur === 1 ? '' : 's'}`, 'current streak') + tile(`${s.best} day${s.best === 1 ? '' : 's'}`, 'best streak') + tile(mins(all), 'all time');
+  const days = []; const e = new Date(); e.setDate(e.getDate() - 13); for (let i = 0; i < 14; i++) { days.push(dayOf(e)); e.setDate(e.getDate() + 1); }
+  const mx = Math.max(60, ...days.map(k => stats.days[k] || 0));
+  $('dBars').innerHTML = days.map((k, i) => { const v = stats.days[k] || 0; return `<div class="db${i === 13 ? ' now' : ''}" title="${k}: ${mins(v)}"><i style="height:${Math.max(v ? 4 : 0, v / mx * 100)}%"></i><span>${new Date(k + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'narrow' })}</span></div>`; }).join('');
+  const top = Object.entries(stats.tracks).map(([id, v]) => [tracks.find(t => t.id === id), v]).filter(x => x[0]).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  $('dTop').innerHTML = top.length ? top.map(([t, v]) => `<div class="dt"><span>${esc(t.title)}</span><b>${mins(v)}</b></div>`).join('') : '<div class="dt"><span>Nothing yet. Press play to start your streak.</span></div>';
+  $('dash').classList.add('open');
+}
+$('statRow').onclick = () => { closeLib(); openDash(); };
+$('dClose').onclick = () => $('dash').classList.remove('open');
+$('dash').addEventListener('click', e => { if (e.target.id === 'dash') $('dash').classList.remove('open'); });
+$('signOut2').onclick = () => $('signOut').click();
+
+// ---------- Progress Pad: finished listens go on the Done list, and can count toward a trigger ----------
+const ppPref = () => { try { return JSON.parse(localStorage.getItem('mp.pp.' + user.id)) || { log: true, trig: '' }; } catch { return { log: true, trig: '' }; } };
+const ppSave = p => localStorage.setItem('mp.pp.' + user.id, JSON.stringify(p));
+async function loadPP() {
+  const p = ppPref(); $('ppLog').checked = p.log;
+  const { data } = await supabase.from('triggers').select('id,name,emoji').eq('user_id', user.id).is('deleted_at', null).order('name');
+  const sel = $('ppTrig'); sel.innerHTML = '<option value="">None</option>' + (data || []).map(t => `<option value="${t.id}">${esc((t.emoji ? t.emoji + ' ' : '') + t.name)}</option>`).join('');
+  sel.value = (data || []).some(t => t.id === p.trig) ? p.trig : '';
+}
+$('ppLog').onchange = () => { const p = ppPref(); p.log = $('ppLog').checked; ppSave(p); };
+$('ppTrig').onchange = () => { const p = ppPref(); p.trig = $('ppTrig').value; ppSave(p); if (p.trig) toast('Each finished listen will count toward that trigger.'); };
+function finishedTrack(t) { logListen(`Listened to "${t.title}" on MemoPad`, t.id); }
+async function logListen(title, key) {
+  const p = ppPref(); if (!p.log && !p.trig) return; if (!navigator.onLine) return;
+  const day = dayOf(), once = `mp.logged.${user.id}.${day}.${key}`; if (localStorage.getItem(once)) return; localStorage.setItem(once, '1');
+  try {
+    if (p.log) { const r = await supabase.from('writing_entries').insert({ user_id: user.id, on_date: day, kind: 'done', title, notes: 'MemoPad' }); if (r.error) throw r.error; }
+    if (p.trig) {
+      const ex = await supabase.from('date_trigger_states').select('status,times_done').eq('user_id', user.id).eq('on_date', day).eq('trigger_id', p.trig).maybeSingle();
+      if (ex.error) throw ex.error;
+      const r = ex.data
+        ? await supabase.from('date_trigger_states').update({ status: 'achieved', times_done: ex.data.status === 'achieved' ? Math.min(999, ex.data.times_done + 1) : 1, updated_at: new Date().toISOString() }).eq('user_id', user.id).eq('on_date', day).eq('trigger_id', p.trig)
+        : await supabase.from('date_trigger_states').insert({ user_id: user.id, on_date: day, trigger_id: p.trig, status: 'achieved', times_done: 1 });
+      if (r.error) throw r.error;
+      // make sure the trigger shows on today's list in the pad
+      const a = await supabase.from('date_assignments').select('position,trigger_id').eq('user_id', user.id).eq('on_date', day);
+      if (!a.error && !(a.data || []).some(x => x.trigger_id === p.trig)) await supabase.from('date_assignments').insert({ user_id: user.id, on_date: day, kind: 'trigger', trigger_id: p.trig, position: (a.data || []).reduce((m, x) => Math.max(m, x.position), -1) + 1 });
+    }
+    toast('Nice work. Logged in your Progress Pad ✓', false, 3500);
+  } catch (e) { localStorage.removeItem(once); toast('Could not log to Progress Pad: ' + e.message, true); }
+}
+
+// ---------- share a playlist by link ----------
+const b64e = o => btoa(unescape(encodeURIComponent(JSON.stringify(o)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const b64d = s => JSON.parse(decodeURIComponent(escape(atob(s.replace(/-/g, '+').replace(/_/g, '/')))));
+$('peShare').onclick = () => {
+  const p = editPl; if (!p || !p.items.length) return; $('plEdit').classList.remove('open');
+  const code = b64e({ n: p.name, i: p.items.map(it => [it.m, it.t0 ?? null, it.t1 ?? null, it.label]) });
+  const priv = p.items.some(it => { const t = tracks.find(x => x.id === it.m); return t && isOwn(t) && !t.is_shared; });
+  if (priv) toast('Some memos in this playlist are not shared yet, so others will not hear them.', true, 6000);
+  shareLink(`${location.origin}/?pl=${code}`, p.name);
+};
+(() => { const q = new URLSearchParams(location.search); if (q.get('pl')) { sessionStorage.setItem('mp.plshare', q.get('pl')); history.replaceState(null, '', '/'); } })();
+function importSharedPlaylist() {
+  const code = sessionStorage.getItem('mp.plshare'); if (!code) return; sessionStorage.removeItem('mp.plshare');
+  let o; try { o = b64d(code); } catch { toast('That playlist link is not complete.', true); return; }
+  const items = (o.i || []).map(([m, t0, t1, label]) => ({ m, t0, t1, label })).filter(it => tracks.some(t => t.id === it.m));
+  if (!items.length) { toast('None of the memos in that playlist are shared with you.', true); return; }
+  let p = playlists.find(x => x.name === o.n && JSON.stringify(x.items) === JSON.stringify(items));
+  if (!p) { p = { id: crypto.randomUUID(), name: o.n || 'Shared playlist', items }; playlists.push(p); savePlaylists(); }
+  const miss = (o.i || []).length - items.length;
+  toast(`Playlist "${p.name}" added${miss ? ` (${miss} item${miss === 1 ? '' : 's'} not shared with you)` : ''}. Tap ▶ in your library to play.`, false, 6000);
 }

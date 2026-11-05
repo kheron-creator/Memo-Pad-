@@ -42,12 +42,13 @@
   <!-- Library -->
   <aside class="side" id="side">
     <div class="brand"><div><b>MemoPad</b><small>Voice memo affirmations</small></div><button class="closeside" id="closeSide" title="Close">✕</button></div>
+    <button class="statrow" id="statRow" type="button"><span id="statTxt">Your listening</span><span class="go">›</span></button>
     <div class="drop" id="drop"><b>Drop audio here</b><small>MP3, WAV, M4A or a voice memo</small><button class="choose" id="chooseBtn" type="button">Choose file</button></div>
     <input type="file" id="file" accept="audio/*,video/*,.m4a,.mp3,.wav,.aac,.mov,.mp4" multiple hidden>
     <div class="libsearch"><input id="libq" type="search" placeholder="Search titles and transcripts" autocomplete="off"></div>
     <div class="cats" id="cats"></div>
     <div class="lib" id="lib"></div>
-    <div class="ptby"><span>Did you get the message?</span></div>
+    <div class="ptby"><span>Did you get the message?</span><span class="acct"><span id="whoSide"></span><button id="signOut2" type="button">Sign out</button></span></div>
   </aside>
   <div class="scrim" id="scrim"></div>
 
@@ -122,6 +123,9 @@
       <div class="seg" id="model"><button data-v="Xenova/whisper-tiny.en">Fast</button><button data-v="Xenova/whisper-base.en" class="on">Balanced</button><button data-v="Xenova/whisper-small.en">Best</button></div>
       <button class="act" id="offBtn">Save for offline listening</button>
       <button class="act" id="readBtn">Read-along mode</button>
+      <h5>Progress Pad</h5>
+      <div class="row"><span>Add finished listens to my Done list</span><input type="checkbox" id="ppLog" checked></div>
+      <div class="row"><span>Count them toward a trigger</span><select id="ppTrig" class="ppsel"><option value="">None</option></select></div>
       <button class="act" id="convBtn">Convert or compress audio</button>
       <button class="act own" id="pasteBtn">Paste your written script</button>
       <button class="act own" id="srtBtn">Import transcript (SRT)</button>
@@ -196,6 +200,16 @@
   <div class="pllist"><button class="plpick" id="shMemo" type="button">The whole memo</button><button class="plpick" id="shChap" type="button"></button><button class="plpick" id="shHere" type="button"></button></div>
   <div class="acts"><button id="shClose" type="button">CLOSE</button></div>
 </div></div>
+<div class="cv" id="dash"><div class="box">
+  <h3>Your listening</h3>
+  <div class="dgrid" id="dGrid"></div>
+  <h5 class="dh">Last 14 days</h5>
+  <div class="dbars" id="dBars"></div>
+  <h5 class="dh">Most played</h5>
+  <div class="dtop" id="dTop"></div>
+  <p class="dnote">Counted on this device while audio plays.</p>
+  <div class="acts"><button id="dClose" type="button">CLOSE</button></div>
+</div></div>
 <div class="cv" id="plDlg"><div class="box small">
   <h3 id="plHead">Add to a playlist</h3>
   <div class="pllist" id="plList"></div>
@@ -205,7 +219,7 @@
 <div class="cv" id="plEdit"><div class="box small">
   <h3 id="peHead">Playlist</h3>
   <div class="pllist" id="peList"></div>
-  <div class="acts"><button id="peDel" type="button">DELETE PLAYLIST</button><button class="go" id="pePlay" type="button">PLAY</button></div>
+  <div class="acts"><button id="peDel" type="button">DELETE</button><button id="peShare" type="button">SHARE</button><button class="go" id="pePlay" type="button">PLAY</button></div>
   <div class="acts" style="margin-top:8px"><button id="peClose" type="button">CLOSE</button></div>
 </div></div>
 <div class="reader" id="reader" hidden>

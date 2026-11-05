@@ -41,7 +41,8 @@
 <div class="app" id="app" hidden>
   <!-- Library -->
   <aside class="side" id="side">
-    <div class="brand"><div><b>MemoPad</b><small>Did you get the message?</small></div>
+    <div class="rz" id="rzL" title="Drag to resize"></div>
+    <div class="brand"><img class="blogo" src="/favicon-64.png" alt=""><div><b>MemoPad</b><small class="btag">Did you get the message?</small></div>
       <div class="bicons">
         <button class="ib" id="libSearchBtn" type="button" title="Search" aria-label="Search titles and transcripts"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg></button>
         <button class="ib add" id="chooseBtn" type="button" title="Add audio" aria-label="Add audio"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>
@@ -151,6 +152,7 @@
 
   <!-- Chapters -->
   <aside class="chaps">
+    <div class="rz" id="rzR" title="Drag to resize"></div>
     <h3>Chapters</h3>
     <div class="hint">Touch points through the track. Tap to jump, double tap a name to rename.</div>
     <div class="overview" id="ovWrap"><canvas id="ov"></canvas></div>
@@ -237,7 +239,7 @@
 <div class="blackout" id="blackout" hidden><div class="bhint" id="bHint">Audio keeps playing. Double tap to come back.</div></div>
 <div class="reader" id="reader" hidden>
   <button class="rclose" id="rClose" aria-label="Close read-along">✕</button>
-  <div class="rtools"><button id="rFull" type="button">Full screen</button><button id="rBlack" type="button">Blackout</button></div>
+  <div class="rtools"><button id="rFull" type="button">Full screen</button><button id="rLight" type="button">Light mode</button><button id="rBlack" type="button">Blackout</button></div>
   <div class="rch" id="rCh"></div>
   <div class="rtext" id="rText"></div>
   <div class="rctl"><button id="rPrev" aria-label="Previous affirmation">‹</button><button class="rplay" id="rPlay" aria-label="Play or pause"></button><button id="rNext" aria-label="Next affirmation">›</button></div>

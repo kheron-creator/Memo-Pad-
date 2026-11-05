@@ -1266,3 +1266,38 @@ $('installBtn').onclick = async () => {
   if (installEvt) { installEvt.prompt(); const r = await installEvt.userChoice; if (r.outcome === 'accepted') $('installBtn').hidden = true; installEvt = null; return; }
   toast('In Safari, tap the Share button, then "Add to Home Screen". MemoPad then opens full screen like an app.', false, 9000);
 };
+
+
+// ---------- Esc backs out of whatever is open ----------
+addEventListener('keydown', e => {
+  if (e.key !== 'Escape' || e.defaultPrevented) return;
+  if (!$('blackout').hidden || !$('reader').hidden) return; // those close themselves
+  const dlg = [...document.querySelectorAll('.cv.open')].pop();
+  if (dlg) { dlg.classList.remove('open'); return; }
+  if ($('pop').classList.contains('open')) { $('pop').classList.remove('open'); return; }
+  if (!$('repbar').hidden) { stopRep(); return; }
+  if (document.body.classList.contains('libopen')) { closeLib(); return; }
+  if (!$('libSearch').hidden) { $('libSearchBtn').click(); return; }
+  if (mode === 'tx') setMode('wave');
+});
+
+// ---------- light mode for read-along / full screen ----------
+function setReaderLight(on) { $('reader').classList.toggle('light', on); $('rLight').textContent = on ? 'Dark mode' : 'Light mode'; localStorage.setItem('mp.readerLight', on ? '1' : ''); }
+$('rLight').onclick = () => setReaderLight(!$('reader').classList.contains('light'));
+setReaderLight(!!localStorage.getItem('mp.readerLight'));
+
+// ---------- drag the panel edges to resize (computer) ----------
+(() => {
+  const app = document.querySelector('.app'), clampW = v => Math.max(240, Math.min(560, v));
+  const load = () => { const w = JSON.parse(localStorage.getItem('mp.widths') || '{}'); if (w.l) app.style.setProperty('--lw', w.l + 'px'); if (w.r) app.style.setProperty('--rw', w.r + 'px'); };
+  const save = () => localStorage.setItem('mp.widths', JSON.stringify({ l: parseInt(app.style.getPropertyValue('--lw')) || 0, r: parseInt(app.style.getPropertyValue('--rw')) || 0 }));
+  const drag = (el, side) => el.addEventListener('pointerdown', e => {
+    e.preventDefault(); el.setPointerCapture(e.pointerId); document.body.classList.add('resizing');
+    const panel = el.parentElement, x0 = e.clientX, w0 = panel.getBoundingClientRect().width;
+    const move = ev => { const w = clampW(side === 'l' ? w0 + ev.clientX - x0 : w0 - (ev.clientX - x0)); app.style.setProperty(side === 'l' ? '--lw' : '--rw', w + 'px'); drawOverview(); };
+    const up = () => { el.removeEventListener('pointermove', move); el.removeEventListener('pointerup', up); document.body.classList.remove('resizing'); save(); drawOverview(); };
+    el.addEventListener('pointermove', move); el.addEventListener('pointerup', up);
+  });
+  drag($('rzL'), 'l'); drag($('rzR'), 'r'); load();
+  $('rzL').ondblclick = $('rzR').ondblclick = () => { app.style.removeProperty('--lw'); app.style.removeProperty('--rw'); localStorage.removeItem('mp.widths'); drawOverview(); };
+})();

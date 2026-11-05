@@ -385,3 +385,51 @@ body.dragging .card::after{content:'Drop to add';position:absolute;inset:10px;bo
 @media (hover:none){.item.vm.on .vdur{display:none}.item.vm .vacts .idel{opacity:1}}
 .lib h4{margin:18px 4px 4px}
 @media (min-width:1181px){.libtitle{font-size:30px}.item.vm .nm{font-size:17px}}
+
+/* ---------- comfort pass: calmer sizes in the player ---------- */
+.title h1{font-size:21px}
+.title .sub{font-size:14px}
+#tx{font-size:21px;line-height:1.5}
+.clock{font-size:40px}
+.play{width:54px;height:54px}
+.skip{width:44px;height:44px}
+.chskip{width:26px;height:26px}
+.ctrls{gap:28px}
+.round{width:48px;height:48px}
+.round svg{width:24px;height:24px}
+.pill{height:52px;min-width:180px;font-size:15px}
+.circ{width:42px;height:42px}
+@media (min-width:1181px){
+  .app{grid-template-columns:var(--lw,340px) minmax(480px,1fr) var(--rw,340px);max-width:1900px;margin:0 auto}
+  #tx{font-size:21px;padding:28px 56px 100px}
+  .clock{font-size:38px}
+}
+@media (max-width:820px){#tx{font-size:19px;padding:22px 20px 100px}.clock{font-size:42px}}
+/* brand */
+.blogo{width:34px;height:34px;border-radius:9px;flex:0 0 34px}
+.brand .btag{color:#e6e6ea;font-size:14px;font-weight:700;font-style:italic;letter-spacing:.2px;margin-top:2px}
+/* calmer list titles */
+.item.vm .nm{font-family:var(--body);font-weight:500;font-size:17px}
+.libtitle{font-weight:700}
+/* resize handles (computer only) */
+.rz{display:none}
+@media (min-width:1181px){.side,.chaps{position:relative}}
+.chaps{position:relative}
+@media (min-width:1181px){
+  .rz{display:block;position:absolute;top:24px;bottom:24px;width:14px;cursor:col-resize;z-index:4;touch-action:none}
+  #rzL{right:-21px} #rzR{left:-21px}
+  .rz::after{content:'';position:absolute;left:6px;top:50%;height:44px;margin-top:-22px;width:3px;border-radius:2px;background:#3a3a40;opacity:0;transition:opacity .15s}
+  .rz:hover::after,body.resizing .rz::after{opacity:1}
+}
+body.resizing{cursor:col-resize;user-select:none}
+/* light read-along */
+.reader.light{background:#fff}
+.reader.light .rw{color:#c4c4c8}
+.reader.light .rw.past{color:#55555a}
+.reader.light .rw.now{color:#000;text-shadow:none}
+.reader.light .rch{color:#8e8e93}
+.reader.light .rclose,.reader.light .rtools button{background:#0000000d;color:#222}
+.reader.light .rctl button{color:#555}
+.reader.light .rctl .rplay{background:#0000000f}
+.reader.light .rctl .rplay::before{border-left-color:#111}
+.reader.light .rctl .rplay.on::before{background:#111;box-shadow:13px 0 0 #111}

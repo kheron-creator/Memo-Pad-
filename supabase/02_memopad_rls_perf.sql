@@ -1,3 +1,4 @@
+-- Already applied to the live project on 2026-11-05.
 -- MemoPad: faster row-level security (fixes the Supabase "auth_rls_initplan" advisor warnings for memopad_ only).
 -- Only touches MemoPad's own policies. Nothing in Progress Pad is changed.
 alter policy "memopad: read own or shared" on public.memopad_memos using ((select auth.uid()) = user_id or is_shared);

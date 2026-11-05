@@ -55,3 +55,6 @@ create policy "memopad-audio: owner update" on storage.objects for update to aut
   using (bucket_id = 'memopad-audio' and (storage.foldername(name))[1] = auth.uid()::text);
 create policy "memopad-audio: owner delete" on storage.objects for delete to authenticated
   using (bucket_id = 'memopad-audio' and (storage.foldername(name))[1] = auth.uid()::text);
+
+-- Let signed-in users reach the table through the API (row-level security still limits them to their own or shared memos)
+grant select, insert, update, delete on table public.memopad_memos to authenticated;

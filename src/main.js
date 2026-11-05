@@ -3,6 +3,7 @@ import {
   supabase, configured, BUCKET, TABLE, FREE_STORAGE, MAX_FILE,
   rowToTrack, trackToRow, cacheAll, cachePut, cacheDel, audioGet, audioPut, cacheClear,
 } from './cloud.js';
+import { transcriptChapters } from './chapters.js';
 
 const $ = id => document.getElementById(id);
 const audio = $('audio');
@@ -326,6 +327,25 @@ audio.onpause = () => { $('playIcon').setAttribute('d', 'M18 10 L54 32 L18 54 Z'
 audio.onerror = () => { if (cur && audio.src) status('This audio could not play. Check your connection and try again.', true); };
 const jump = d => { if (cur) audio.currentTime = clamp(audio.currentTime + d, 0, audio.duration || cur.duration); };
 $('back').onclick = () => jump(-15); $('fwd').onclick = () => jump(15);
+// skip through chapters like songs
+function prevChapter() { if (!cur) return; const t = audio.currentTime, k = chapterAt(t); if (k < 0) return; const c = cur.chapters[k]; audio.currentTime = (t - c.t > 3 || k === 0) ? c.t : cur.chapters[k - 1].t; }
+function nextChapter() { if (!cur) return; const k = chapterAt(audio.currentTime); const n = cur.chapters[k + 1]; if (n) audio.currentTime = n.t; }
+$('prevCh').onclick = prevChapter; $('nextCh').onclick = nextChapter;
+$('chapnow').onclick = () => { const el = document.querySelector('.chaps'); if (innerWidth <= 820) el.scrollIntoView({ behavior: 'smooth' }); };
+// lock screen and headphone controls (iPhone shows the chapter as the track name)
+const ms = navigator.mediaSession;
+function updateMediaSession() {
+  if (!ms || !cur) return;
+  const k = chapterAt(audio.currentTime), ch = cur.chapters[k];
+  try { ms.metadata = new MediaMetadata({ title: ch && cur.chapters.length > 1 ? ch.title : cur.title, artist: cur.chapters.length > 1 ? cur.title : 'MemoPad', album: 'MemoPad · Progress Today', artwork: [{ src: '/icon-512.png', sizes: '512x512', type: 'image/png' }] }); } catch { /* older browsers */ }
+}
+if (ms) {
+  const set = (a, f) => { try { ms.setActionHandler(a, f); } catch { /* unsupported action */ } };
+  set('play', () => audio.play()); set('pause', () => audio.pause());
+  set('previoustrack', prevChapter); set('nexttrack', nextChapter);
+  set('seekbackward', () => jump(-15)); set('seekforward', () => jump(15));
+  set('seekto', e => { if (e.seekTime != null) audio.currentTime = e.seekTime; });
+}
 addEventListener('keydown', e => {
   if (!user || $('app').hidden) return;
   if (e.target.closest('input,[contenteditable=true]')) { if (e.key === 'Escape') e.target.blur(); return; }
@@ -425,19 +445,6 @@ function addChapter() {
   const k = cur.chapters.findIndex(c => c.t === t); const el = $('clist').querySelector(`[data-k="${k}"] .t`); if (el && el.ondblclick) el.ondblclick(new Event('dblclick'));
 }
 $('addch').onclick = addChapter;
-// chapters from transcript: new chapter after long pauses or every ~45s at a sentence end
-function transcriptChapters(words) {
-  if (!words.length) return [{ t: 0, title: 'Start' }];
-  const total = words[words.length - 1].end || 0, minLen = Math.max(25, total / 24); // long tracks get longer chapters
-  const out = []; const mk = i => ({ t: Math.max(0, words[i].start - 0.2), title: words.slice(i, i + 6).map(w => w.text).join(' ').replace(/[,.;:!?]+$/, '') });
-  out.push({ ...mk(0), t: 0 });
-  for (let i = 1; i < words.length; i++) {
-    const gap = words[i].start - words[i - 1].end, since = words[i].start - out[out.length - 1].t, endS = /[.!?]$/.test(words[i - 1].text);
-    if ((gap > 1.6 && since > Math.max(12, minLen * 0.6)) || (endS && since > minLen * 1.8) || (gap > 0.7 && endS && since > minLen)) out.push(mk(i));
-  }
-  return out;
-}
-
 // ---------- transcript ----------
 let wordEls = [];
 function renderTranscript() {
@@ -455,7 +462,7 @@ function renderTranscript() {
   const frag = document.createDocumentFragment();
   cur.words.forEach((w, i) => {
     const prev = cur.words[i - 1];
-    while (ci < chStarts.length && chStarts[ci] <= w.start + 0.25) { const h = document.createElement('div'); h.className = 'ch'; const c = cur.chapters[ci]; h.textContent = `${ci + 1}. ${c.title}`; h.style.color = CHAP_COLS[ci % CHAP_COLS.length]; h.onclick = () => audio.currentTime = c.t; frag.appendChild(h); p = null; ci++; }
+    while (ci < chStarts.length && chStarts[ci] <= w.start + 0.25) { const h = document.createElement('div'); h.className = 'ch'; const c = cur.chapters[ci]; h.textContent = `${ci + 1}. ${c.title}`; h.onclick = () => audio.currentTime = c.t; frag.appendChild(h); p = null; ci++; }
     if (!p || (prev && w.start - prev.end > 1.1 && /[.!?]$/.test(prev.text))) { p = document.createElement('p'); frag.appendChild(p); }
     const s = document.createElement('span'); s.className = 'w'; s.textContent = w.text; s.onclick = () => { audio.currentTime = Math.max(0, w.start - 0.05); };
     p.appendChild(s); p.appendChild(document.createTextNode(' ')); wordEls.push(s);
@@ -471,7 +478,6 @@ function updateTranscript() {
   const lo = Math.min(a, lastW), hi = Math.max(a, lastW);
   if (lastW < -1 || Math.abs(a - lastW) > 60) { wordEls.forEach((el, i) => { el.classList.toggle('past', i < a); el.classList.toggle('now', i === a); }); }
   else for (let i = Math.max(0, lo); i <= hi; i++) { const el = wordEls[i]; if (!el) continue; el.classList.toggle('past', i < a); el.classList.toggle('now', i === a); }
-  const w = cur.words[a]; if (w && wordEls[a]) { const k = Math.max(0, chapterAt(w.start)); wordEls[a].style.setProperty('--glow', CHAP_COLS[k % CHAP_COLS.length]); }
   lastW = a; scrollToActive(false);
 }
 let userScrollUntil = 0;
@@ -627,7 +633,7 @@ let ovTick = 0, looping = false;
 function loop() {
   if (cur) {
     const t = audio.currentTime; $('clock').textContent = clockFmt(t);
-    const k = chapterAt(t); if (k !== lastChap) { lastChap = k; $('chapnow').textContent = k >= 0 && cur.chapters.length > 1 ? `Chapter ${k + 1} · ${cur.chapters[k].title}` : ''; $('clist').querySelectorAll('.chap').forEach(el => el.classList.toggle('on', +el.dataset.k === k)); }
+    const k = chapterAt(t); if (k !== lastChap) { lastChap = k; $('chapnow').textContent = k >= 0 && cur.chapters.length > 1 ? `Chapter ${k + 1} · ${cur.chapters[k].title}` : ''; $('clist').querySelectorAll('.chap').forEach(el => el.classList.toggle('on', +el.dataset.k === k)); updateMediaSession(); }
     if ($('loop').checked && !audio.paused && k >= 0) { const end = cur.chapters[k + 1]?.t ?? cur.duration; if (t >= end - 0.05) audio.currentTime = cur.chapters[k].t; }
     updateTranscript(); if (++ovTick % 6 === 0) drawOverview();
   }

@@ -41,7 +41,7 @@
 <div class="app" id="app" hidden>
   <!-- Library -->
   <aside class="side" id="side">
-    <div class="brand"><img src="/logo.png" alt="Progress Today"><div><b>MemoPad</b><small>Voice memo affirmations</small></div><button class="closeside" id="closeSide" title="Close">✕</button></div>
+    <div class="brand"><div><b>MemoPad</b><small>Voice memo affirmations</small></div><button class="closeside" id="closeSide" title="Close">✕</button></div>
     <div class="drop" id="drop"><b>Drop audio here</b><small>MP3, WAV, M4A or a voice memo</small><button class="choose" id="chooseBtn" type="button">Choose file</button></div>
     <input type="file" id="file" accept="audio/*,video/*,.m4a,.mp3,.wav,.aac,.mov,.mp4" multiple hidden>
     <div class="libsearch"><input id="libq" type="search" placeholder="Search titles and transcripts" autocomplete="off"></div>
@@ -92,9 +92,11 @@
     <div class="clock" id="clock">00:00.00</div>
     <div class="chapnow" id="chapnow"></div>
     <div class="ctrls">
+      <button class="chskip" id="prevCh" title="Previous chapter"><svg viewBox="0 0 32 32" fill="#fff"><rect x="6" y="7" width="3.4" height="18" rx="1.2"/><path d="M26 7.5v17a1 1 0 0 1-1.5.9L11 16.9a1 1 0 0 1 0-1.8l13.5-8.5a1 1 0 0 1 1.5.9z"/></svg></button>
       <button class="skip" id="back" title="Back 15s (←)"><svg viewBox="0 0 52 52" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round"><path d="M26 9a17 17 0 1 1-15.6 10.2"/><path d="M26 3v12l-8-6z" fill="#fff" stroke="none"/><text x="26" y="33" font-size="15" font-weight="800" text-anchor="middle" fill="#fff" stroke="none" font-family="Poppins">15</text></svg></button>
       <button class="play" id="play" title="Play (Space)"><svg viewBox="0 0 64 64"><path id="playIcon" d="M18 10 L54 32 L18 54 Z" fill="#fff" stroke="#fff" stroke-width="4" stroke-linejoin="round"/></svg></button>
       <button class="skip" id="fwd" title="Forward 15s (→)"><svg viewBox="0 0 52 52" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round"><path d="M26 9a17 17 0 1 0 15.6 10.2"/><path d="M26 3v12l8-6z" fill="#fff" stroke="none"/><text x="26" y="33" font-size="15" font-weight="800" text-anchor="middle" fill="#fff" stroke="none" font-family="Poppins">15</text></svg></button>
+      <button class="chskip" id="nextCh" title="Next chapter"><svg viewBox="0 0 32 32" fill="#fff"><rect x="22.6" y="7" width="3.4" height="18" rx="1.2"/><path d="M6 7.5v17a1 1 0 0 0 1.5.9L21 16.9a1 1 0 0 0 0-1.8L7.5 6.6A1 1 0 0 0 6 7.5z"/></svg></button>
     </div>
     <div class="bottom">
       <button class="round" id="txBtn" title="Transcript (T)"><svg viewBox="0 0 28 28" fill="none" stroke="#fff" stroke-width="2.2" stroke-linejoin="round"><path d="M5 6h18a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-9l-5 4v-4H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z"/><path d="M10 11.5h2.5v2.5c0 1.4-.8 2.3-2 2.6M15.5 11.5H18v2.5c0 1.4-.8 2.3-2 2.6" stroke-width="2"/></svg></button>

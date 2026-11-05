@@ -16,7 +16,7 @@ const CHAP_COLS = ['#FFB000', '#E10195', '#5197A8', '#EB7100', '#FFCD5E', '#B3D5
 const DEFAULT_CATS = ['Confidence', 'Tasks', 'Mornings', 'Mindset', 'Gratitude'];
 const BPS = 20; // waveform bars per second
 const MB = 1048576;
-let theme = localStorage.getItem('vma.theme') || 'pt', model = localStorage.getItem('vma.model') || 'Xenova/whisper-base.en';
+let theme = localStorage.getItem('vma.theme') || 'pt', model = localStorage.getItem('vma.model') || (matchMedia('(pointer:coarse)').matches ? 'Xenova/whisper-tiny.en' : 'Xenova/whisper-base.en');
 let tracks = [], cur = null; // {id,user_id,title,category,audio_path,duration,peaks,words,chapters,is_shared,added,blob?}
 let mode = 'wave';
 let user = null;
@@ -111,7 +111,7 @@ let storageUsed = 0;
 async function refreshStorage() {
   let used = null; // add up my own audio files
   const l = await supabase.storage.from(BUCKET).list(user.id, { limit: 1000 });
-  if (!l.error) used = (l.data || []).reduce((a, f) => a + (f.metadata?.size || 0), 0);
+  if (!l.error && Array.isArray(l.data)) used = l.data.reduce((a, f) => a + (f.metadata?.size || 0), 0);
   if (used == null) { $('storeTxt').textContent = 'Storage use is not available offline.'; return; }
   storageUsed = used;
   const pct = used / FREE_STORAGE * 100, warn = pct >= 70;
@@ -178,6 +178,7 @@ async function addFile(f, preCompressed) {
     const saved = Math.max(0, Math.round((1 - out.size / before) * 100));
     toast(out === f ? `Added "${t.title}" (${mb(out.size)}).` : `Compressed ${mb(before)} → ${mb(out.size)}${saved ? ` (${saved}% smaller)` : ''}. Saved to MemoPad ✓`);
     storageUsed += out.size; refreshStorage();
+    enqueueTranscribe(t, true);
   } catch (err) {
     prog(null); status('');
     toast(`Could not add ${f.name}: ${err.message || err}.`, true, 8000);
@@ -225,7 +226,7 @@ function renderLib() {
     list.forEach(t => {
       const d = document.createElement('div'); d.className = 'item' + (t === cur ? ' on' : '') + (t === cur && !audio.paused ? ' playing' : '');
       const n = t.chapters.length;
-      d.innerHTML = `<span class="dot"></span><div style="min-width:0;flex:1"><div class="nm">${esc(t.title)}</div><div class="mt"><span>${short(t.duration)}</span><span>· ${n} chapter${n === 1 ? '' : 's'}</span>${t.category ? `<span class="cat">${esc(t.category)}</span>` : ''}${isOwn(t) && t.is_shared ? '<span class="sh">· shared</span>' : ''}</div></div>`;
+      d.innerHTML = `<span class="dot"></span><div style="min-width:0;flex:1"><div class="nm">${esc(t.title)}</div><div class="mt"><span>${short(t.duration)}</span><span>· ${n} chapter${n === 1 ? '' : 's'}</span>${t.category ? `<span class="cat">${esc(t.category)}</span>` : ''}${isOwn(t) && t.is_shared ? '<span class="sh">· shared</span>' : ''}${txing === t ? '<span class="sh">· transcribing…</span>' : txQueue.includes(t) ? '<span class="sh">· waiting to transcribe</span>' : ''}</div></div>`;
       d.onclick = () => { select(t); closeLib(); };
       L.appendChild(d);
     });
@@ -246,7 +247,7 @@ async function select(t) {
   const d = new Date(t.added); $('sub').textContent = `${d.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'short' })}   ${pad(d.getHours())}:${pad(d.getMinutes())}`;
   renderMeta();
   search.q = ''; $('q').value = ''; $('sbar').classList.remove('has'); $('qc').textContent = '';
-  status(''); renderLib(); renderChapters(); renderTranscript(); drawOverview(); updateMain();
+  status(t._txMsg || ''); prog(null); renderLib(); renderChapters(); renderTranscript(); drawOverview(); updateMain();
   await loadAudio(t);
 }
 // cached copy first (works offline), otherwise a signed URL from the private bucket
@@ -427,11 +428,12 @@ $('addch').onclick = addChapter;
 // chapters from transcript: new chapter after long pauses or every ~45s at a sentence end
 function transcriptChapters(words) {
   if (!words.length) return [{ t: 0, title: 'Start' }];
+  const total = words[words.length - 1].end || 0, minLen = Math.max(25, total / 24); // long tracks get longer chapters
   const out = []; const mk = i => ({ t: Math.max(0, words[i].start - 0.2), title: words.slice(i, i + 6).map(w => w.text).join(' ').replace(/[,.;:!?]+$/, '') });
   out.push({ ...mk(0), t: 0 });
   for (let i = 1; i < words.length; i++) {
     const gap = words[i].start - words[i - 1].end, since = words[i].start - out[out.length - 1].t, endS = /[.!?]$/.test(words[i - 1].text);
-    if ((gap > 1.6 && since > 12) || (endS && since > 45) || (gap > 0.7 && endS && since > 25)) out.push(mk(i));
+    if ((gap > 1.6 && since > Math.max(12, minLen * 0.6)) || (endS && since > minLen * 1.8) || (gap > 0.7 && endS && since > minLen)) out.push(mk(i));
   }
   return out;
 }
@@ -442,7 +444,9 @@ function renderTranscript() {
   const T = $('tx'); T.innerHTML = ''; wordEls = [];
   if (!cur) return;
   if (!cur.words.length) {
-    T.innerHTML = isOwn(cur)
+    T.innerHTML = (txing === cur || txQueue.includes(cur))
+      ? `<div class="empty">Transcribing in the background…<br>The words will appear here and light up as it plays.</div>`
+      : isOwn(cur)
       ? `<div class="empty">No transcript yet.<br>Press <b>TRANSCRIBE</b> to turn the audio into text that lights up as it plays.<br><br><span style="font-size:15px">Runs privately on your device. The first time it downloads a speech model.</span></div>`
       : `<div class="empty">No transcript for this memo yet.</div>`;
     return;
@@ -518,41 +522,66 @@ self.onmessage=async e=>{
     self.postMessage({type:'done',mode,chunks:out.chunks||[]});
   }catch(err){ self.postMessage({type:'error',message:String(err&&err.message||err)}); }
 };`;
-let worker = null, busy = false;
+let worker = null, txing = null; // the memo being transcribed right now
+const txQueue = [];
+const busyFor = t => !!t && txing === t;
 function updateMain() {
   const b = $('mainBtn');
-  if (busy) { b.textContent = 'TRANSCRIBING…'; b.disabled = true; return; }
+  if (busyFor(cur)) { b.textContent = 'TRANSCRIBING…'; b.disabled = true; return; }
+  if (cur && txQueue.includes(cur)) { b.textContent = 'WAITING…'; b.disabled = true; return; }
   if (upBusy) { b.textContent = 'ADDING…'; b.disabled = true; return; }
   b.disabled = false; b.textContent = cur && cur.words.length ? 'ADD CHAPTER' : 'TRANSCRIBE';
 }
-$('mainBtn').onclick = () => { if (!cur || !isOwn(cur)) return; if (cur.words.length) addChapter(); else transcribe(); };
+$('mainBtn').onclick = () => { if (!cur || !isOwn(cur)) return; if (cur.words.length) addChapter(); else enqueueTranscribe(cur); };
 function prog(p) { $('prog').style.display = p == null ? 'none' : 'block'; $('prog').firstChild.style.width = (p || 0) + '%'; }
-async function transcribe() {
-  if (!cur || busy || !isOwn(cur)) return; const t = cur; busy = true; updateMain(); status('Preparing audio...'); prog(3);
-  let fake = null;
-  const fail = msg => { clearInterval(fake); busy = false; updateMain(); prog(null); status('Transcription failed (' + msg + '). The first run needs internet to download the model.', true); };
-  try {
-    const ab = await decode(await getBlob(t));
-    const off = new OfflineAudioContext(1, Math.ceil(ab.duration * 16000), 16000); const s = off.createBufferSource(); s.buffer = ab; s.connect(off.destination); s.start();
-    const pcm = (await off.startRendering()).getChannelData(0);
-    if (!worker) worker = new Worker(URL.createObjectURL(new Blob([workerSrc], { type: 'text/javascript' })), { type: 'module' });
-    const files = {};
-    worker.onmessage = e => {
-      const m = e.data;
-      if (m.type === 'progress' && m.p.status === 'progress' && m.p.total) { files[m.p.file] = [m.p.loaded, m.p.total]; const L = Object.values(files).reduce((a, b) => a + b[0], 0), T = Object.values(files).reduce((a, b) => a + b[1], 0); prog(5 + 60 * L / T); status(`Downloading speech model, first time only: ${(L / 1e6).toFixed(0)} of ${(T / 1e6).toFixed(0)} MB`); }
-      if (m.type === 'status') { status('Listening to your affirmation... (about a third of its length)'); let p = 66; fake = setInterval(() => { p = Math.min(96, p + 0.6); prog(p); }, 500); }
-      if (m.type === 'done') {
-        clearInterval(fake);
-        let list = []; if (m.mode === 'word') list = m.chunks.map(c => ({ text: c.text.trim(), start: c.timestamp[0], end: c.timestamp[1] ?? c.timestamp[0] + 0.3 }));
-        else m.chunks.forEach(c => list.push(...spread(c.text, c.timestamp[0], c.timestamp[1] ?? c.timestamp[0] + 3)));
-        setWords(t, list.filter(w => w.text && !/^[\[(].*[\])]$/.test(w.text)));
-        busy = false; updateMain(); prog(null); status(t.words.length ? `Transcribed ${t.words.length} words into ${t.chapters.length} chapters. Saved ✓` : 'No speech found in this track.'); setTimeout(() => status(''), 4000); setMode('tx');
-      }
-      if (m.type === 'error') fail(m.message);
-    };
-    worker.onerror = e => fail(e.message || 'could not start');
-    status('Loading speech model...'); worker.postMessage({ audio: pcm, model }, [pcm.buffer]);
-  } catch (err) { fail(err.message || String(err)); }
+// automatic transcription, like Voice Memos: every new memo joins a queue and is transcribed in the background
+function enqueueTranscribe(t, auto) {
+  if (!t || !isOwn(t) || t.words.length || txing === t || txQueue.includes(t)) return;
+  txQueue.push(t); renderLib(); updateMain(); pumpTx(auto);
+}
+async function pumpTx(auto) {
+  if (txing || !txQueue.length) return;
+  const t = txQueue.shift(); txing = t; renderLib(); updateMain(); if (cur === t) renderTranscript();
+  try { await transcribe(t, auto); } catch { /* reported in transcribe */ }
+  txing = null; renderLib(); updateMain(); pumpTx(true);
+}
+function transcribe(t, auto) {
+  return new Promise(async resolve => {
+    const here = () => cur === t; // only show progress for the memo on screen
+    const st = (m, err) => { t._txMsg = m; if (here()) status(m, err); };
+    const pg = p => { if (here()) prog(p); };
+    let fake = null;
+    const finish = () => { clearInterval(fake); t._txMsg = ''; pg(null); resolve(); };
+    const fail = msg => { finish(); if (here()) status('Transcription failed (' + msg + '). Press TRANSCRIBE to try again. The first run needs internet to download the speech model.', true); else toast(`Could not transcribe "${t.title}": ${msg}`, true); };
+    try {
+      st('Preparing audio for the transcript…'); pg(3);
+      const ab = await decode(await getBlob(t));
+      const off = new OfflineAudioContext(1, Math.ceil(ab.duration * 16000), 16000); const s = off.createBufferSource(); s.buffer = ab; s.connect(off.destination); s.start();
+      const pcm = (await off.startRendering()).getChannelData(0);
+      if (!worker) worker = new Worker(URL.createObjectURL(new Blob([workerSrc], { type: 'text/javascript' })), { type: 'module' });
+      const files = {};
+      worker.onmessage = e => {
+        const m = e.data;
+        if (m.type === 'progress' && m.p.status === 'progress' && m.p.total) { files[m.p.file] = [m.p.loaded, m.p.total]; const L = Object.values(files).reduce((a, b) => a + b[0], 0), T = Object.values(files).reduce((a, b) => a + b[1], 0); pg(5 + 60 * L / T); st(`Downloading the speech model, first time only: ${(L / 1e6).toFixed(0)} of ${(T / 1e6).toFixed(0)} MB`); }
+        if (m.type === 'status') {
+          const mins = Math.max(1, Math.round(ab.duration / 60 / 3));
+          st(`Transcribing… about ${mins} minute${mins === 1 ? '' : 's'}. You can keep listening.`); let p = 66; fake = setInterval(() => { p = Math.min(96, p + 0.4); pg(p); }, 500);
+        }
+        if (m.type === 'done') {
+          let list = []; if (m.mode === 'word') list = m.chunks.map(c => ({ text: c.text.trim(), start: c.timestamp[0], end: c.timestamp[1] ?? c.timestamp[0] + 0.3 }));
+          else m.chunks.forEach(c => list.push(...spread(c.text, c.timestamp[0], c.timestamp[1] ?? c.timestamp[0] + 3)));
+          setWords(t, list.filter(w => w.text && !/^[\[(].*[\])]$/.test(w.text)));
+          finish();
+          const msg = t.words.length ? `Transcript ready: ${t.words.length} words in ${t.chapters.length} chapters ✓` : 'No speech found in this track.';
+          if (here()) { status(msg); setTimeout(() => { if (!t._txMsg) status(''); }, 4000); if (!auto) setMode('tx'); }
+          else if (t.words.length) toast(`"${t.title}" is transcribed ✓`);
+        }
+        if (m.type === 'error') fail(m.message);
+      };
+      worker.onerror = e => fail(e.message || 'could not start');
+      st('Loading the speech model…'); worker.postMessage({ audio: pcm, model }, [pcm.buffer]);
+    } catch (err) { fail(err.message || String(err)); }
+  });
 }
 function setWords(t, list) {
   if (!isOwn(t)) return;
@@ -576,6 +605,13 @@ function importSRT(txt) {
   while ((m = re.exec(txt.replace(/\r/g, '')))) list.push(...spread(m[3].replace(/<[^>]+>/g, '').replace(/\n/g, ' '), tsec(m[1]), tsec(m[2])));
   if (list.length) { setWords(cur, list); setMode('tx'); } else alert('No captions found in that file.');
 }
+$('rechapBtn').onclick = () => {
+  if (!cur || !isOwn(cur)) return; $('pop').classList.remove('open');
+  if (!cur.words.length) { toast('Transcribe this memo first, then chapters can be rebuilt from the words.'); return; }
+  if (!confirm(`Replace the ${cur.chapters.length} chapters on "${cur.title}" with new ones made from the transcript? Renamed chapters will be lost.`)) return;
+  cur.chapters = transcriptChapters(cur.words); save(cur, true).catch(() => {}); renderChapters(); renderTranscript(); drawOverview(); renderLib();
+  toast(`Rebuilt into ${cur.chapters.length} chapters ✓`);
+};
 $('srtBtn').onclick = () => $('srtFile').click(); $('srtFile').onchange = e => { e.target.files[0] && e.target.files[0].text().then(importSRT); e.target.value = ''; };
 function dl(blob, name) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); }
 const dlText = (text, name) => dl(new Blob([text], { type: 'text/plain' }), name);

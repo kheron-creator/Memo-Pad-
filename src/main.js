@@ -250,6 +250,7 @@ async function select(t) {
   search.q = ''; $('q').value = ''; $('sbar').classList.remove('has'); $('qc').textContent = '';
   status(t._txMsg || ''); prog(null); renderLib(); renderChapters(); renderTranscript(); drawOverview(); updateMain();
   await loadAudio(t);
+  if (own && !t.words.length && navigator.onLine) enqueueTranscribe(t, true); // like Voice Memos: no transcript yet, so start one
 }
 // cached copy first (works offline), otherwise a signed URL from the private bucket
 async function loadAudio(t) {

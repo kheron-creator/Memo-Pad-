@@ -45,6 +45,7 @@
     <div class="brand"><img class="blogo" src="/favicon-64.png" alt=""><div><b>MemoPad</b><small class="btag">Did you get the message?</small></div>
       <div class="bicons">
         <button class="ib" id="libSearchBtn" type="button" title="Search" aria-label="Search titles and transcripts"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg></button>
+        <button class="ib" id="favBtn" type="button" title="Your favourites" aria-label="Your favourites"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/></svg></button>
         <button class="ib add" id="chooseBtn" type="button" title="Add audio" aria-label="Add audio"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>
         <button class="closeside" id="closeSide" title="Close">✕</button>
       </div>
@@ -229,6 +230,13 @@
   <div class="pllist" id="plList"></div>
   <div class="newcat"><input id="plNew" placeholder="New playlist name" maxlength="40"><button id="plNewGo" type="button">Create</button></div>
   <div class="acts"><button id="plClose" type="button">CLOSE</button></div>
+</div></div>
+<div class="cv" id="favDlg"><div class="box">
+  <h3>Your favourites</h3>
+  <p class="lead" id="favLead"></p>
+  <div class="favtools"><button id="favPlayAll" type="button">▶ Play all</button><button id="favCopyAll" type="button">Copy all</button></div>
+  <div class="favlist" id="favList"></div>
+  <div class="acts"><button id="favClose" type="button">CLOSE</button></div>
 </div></div>
 <div class="cv" id="plEdit"><div class="box small">
   <h3 id="peHead">Playlist</h3>

@@ -433,3 +433,16 @@ body.resizing{cursor:col-resize;user-select:none}
 .reader.light .rctl .rplay{background:#0000000f}
 .reader.light .rctl .rplay::before{border-left-color:#111}
 .reader.light .rctl .rplay.on::before{background:#111;box-shadow:13px 0 0 #111}
+
+/* favourites list */
+.favtools{display:flex;gap:8px;margin:0 0 12px}
+.favtools button{border:0;background:#ffffff12;border-radius:16px;padding:8px 14px;font-weight:700;font-size:13px}
+.favlist{display:flex;flex-direction:column;gap:8px;max-height:60vh;overflow-y:auto;margin-bottom:14px}
+.fvrow{background:#222227;border-radius:16px;padding:12px 12px 6px 14px}
+.fvtx{font-size:16px;font-weight:600;line-height:1.4;user-select:text;-webkit-user-select:text}
+.fvft{display:flex;align-items:center;gap:2px;margin-top:4px}
+.fvmt{flex:1;min-width:0;color:var(--mute);font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fvb{border:0;background:none;color:#ccc;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;font-size:15px}
+.fvb:hover{background:#ffffff14;color:#fff}
+.repbar .cp{background:none;color:#ddd;padding:6px 8px;display:grid;place-items:center}
+.favh span{display:flex;gap:6px}

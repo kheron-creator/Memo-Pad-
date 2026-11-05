@@ -1051,8 +1051,9 @@ function showRepBar(i) {
   if (!cur || !cur.words.length) return; const [j, k] = sentenceAt(i); if (rep) stopRep();
   const b = $('repbar'); b.hidden = false; b.dataset.j = j; b.dataset.k = k;
   const fv = favIndex(j, k) >= 0;
-  b.innerHTML = `<button type="button" class="star${fv ? ' on' : ''}">${fv ? '★ Saved to favourites' : '☆ Save to favourites'}</button><button type="button" class="x" aria-label="Close">✕</button>`;
+  b.innerHTML = `<button type="button" class="star${fv ? ' on' : ''}">${fv ? '★ Saved to favourites' : '☆ Save to favourites'}</button>${fv ? `<button type="button" class="cp" title="Copy" aria-label="Copy this line">${COPY_ICON}</button>` : ''}<button type="button" class="x" aria-label="Close">✕</button>`;
   b.querySelector('.x').onclick = stopRep;
+  b.querySelector('.cp')?.addEventListener('click', () => { copyText(cur.words.slice(j, k + 1).map(w => w.text).join(' ')); clearTimeout(repHide); repHide = setTimeout(() => { if (!rep) b.hidden = true; }, 4000); });
   b.querySelector('.star').onclick = () => { toggleFav(j, k); showRepBar(i); };
   clearTimeout(repHide); repHide = setTimeout(() => { if (!rep) b.hidden = true; }, 6000);
 }
@@ -1092,6 +1093,34 @@ addEventListener('keydown', e => { if (e.key === 'Escape' && !$('reader').hidden
 
 
 // ---------- favourite lines (kept on this device) ----------
+const COPY_ICON = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M15.5 8.5V6.5a2 2 0 0 0-2-2h-7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h2"/></svg>';
+async function copyText(t) {
+  try { await navigator.clipboard.writeText(t); }
+  catch { const a = document.createElement('textarea'); a.value = t; a.style.cssText = 'position:fixed;opacity:0'; document.body.appendChild(a); a.select(); try { document.execCommand('copy'); } catch {} a.remove(); }
+  toast('Copied ✓', false, 1500);
+}
+function playFav(f) { const t = tracks.find(x => x.id === f.m); if (!t) return; stopPlaylist(); closeLib(); $('favDlg').classList.remove('open'); const go = () => { audio.currentTime = f.t0; audio.play().catch(() => {}); }; if (cur === t) go(); else { select(t); audio.addEventListener('loadedmetadata', go, { once: true }); } }
+const favList = () => favs.filter(f => tracks.some(t => t.id === f.m));
+function renderFavDlg() {
+  const list = favList(), L = $('favList'); L.innerHTML = '';
+  $('favLead').textContent = list.length ? `${list.length} favourite line${list.length > 1 ? 's' : ''}, newest first.` : 'No favourites yet. While a memo plays, press ☆ FAVOURITE to save the line you hear.';
+  document.querySelector('#favDlg .favtools').hidden = !list.length;
+  list.forEach(f => {
+    const t = tracks.find(x => x.id === f.m), d = document.createElement('div'); d.className = 'fvrow';
+    d.innerHTML = `<div class="fvtx"></div><div class="fvft"><span class="fvmt">${esc(t.title)} · ${short(f.t0)}</span><button type="button" class="fvb" data-a="play" title="Play" aria-label="Play this line"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/></svg></button><button type="button" class="fvb" data-a="copy" title="Copy" aria-label="Copy this line">${COPY_ICON}</button><button type="button" class="fvb" data-a="del" title="Remove" aria-label="Remove from favourites">✕</button></div>`;
+    d.querySelector('.fvtx').textContent = f.text;
+    d.querySelector('[data-a=play]').onclick = () => playFav(f);
+    d.querySelector('[data-a=copy]').onclick = () => copyText(f.text);
+    d.querySelector('[data-a=del]').onclick = () => { favs.splice(favs.indexOf(f), 1); localStorage.setItem(favKey(), JSON.stringify(favs)); markFavs(); renderLib(); renderFavDlg(); toast(f.pp ? 'Removed from favourites. It stays in your Progress Pad Quotes.' : 'Removed from favourites.', false, 2500); };
+    L.appendChild(d);
+  });
+}
+function openFavs() { renderFavDlg(); $('favDlg').classList.add('open'); }
+$('favBtn').onclick = openFavs;
+$('favClose').onclick = () => $('favDlg').classList.remove('open');
+$('favDlg').addEventListener('click', e => { if (e.target.id === 'favDlg') $('favDlg').classList.remove('open'); });
+$('favCopyAll').onclick = () => copyText(favList().map(f => `“${f.text}”`).join('\n\n'));
+$('favPlayAll').onclick = () => { const list = favList(); if (!list.length) return; $('favDlg').classList.remove('open'); startPlaylist({ name: 'Favourite lines', items: list.map(f => ({ m: f.m, t0: f.t0, t1: f.t1, label: f.text })) }, 0); closeLib(); };
 let favs = [];
 const favKey = () => 'mp.favs.' + (user ? user.id : 'x');
 function loadFavs() { try { favs = JSON.parse(localStorage.getItem(favKey())) || []; } catch { favs = []; } }
@@ -1101,9 +1130,9 @@ function toggleFav(j, k) {
   if (x >= 0) { const f = favs.splice(x, 1)[0]; toast(f.pp ? 'Removed from favourites. It stays in your Progress Pad Quotes.' : 'Removed from favourites.', false, 2500); }
   else {
     const W = cur.words, f = { m: cur.id, j, k, t0: sentStart(j), t1: W[k].end + 0.35, text: W.slice(j, k + 1).map(w => w.text).join(' ') };
-    favs.unshift(f); toast('Saved to Favourite lines ★', false, 1800); quoteToPad(f, cur.title);
+    favs.unshift(f); toast('Saved to favourites ★', false, 3500, { label: 'Copy', run: () => copyText(f.text) }); quoteToPad(f, cur.title);
   }
-  localStorage.setItem(favKey(), JSON.stringify(favs)); markFavs(); renderLib();
+  localStorage.setItem(favKey(), JSON.stringify(favs)); markFavs(); renderLib(); if ($('favDlg').classList.contains('open')) renderFavDlg();
 }
 function markFavs() {
   wordEls.forEach(el => el.classList.remove('fav')); if (!cur) return;
@@ -1111,14 +1140,16 @@ function markFavs() {
 }
 function renderFavs(L, q) {
   const list = favs.filter(f => tracks.some(t => t.id === f.m) && (!q || norm(f.text).includes(q))); if (!list.length) return;
-  const h = document.createElement('h4'); h.className = 'favh'; h.innerHTML = 'Favourite lines <button type="button" class="favplay">▶ Play all</button>'; L.appendChild(h);
-  h.querySelector('.favplay').onclick = () => { startPlaylist({ name: 'Favourite lines', items: list.map(f => ({ m: f.m, t0: f.t0, t1: f.t1, label: f.text })) }, 0); closeLib(); };
+  const h = document.createElement('h4'); h.className = 'favh'; h.innerHTML = 'Favourite lines <span><button type="button" class="favplay favall">See all</button> <button type="button" class="favplay">▶ Play all</button></span>'; L.appendChild(h);
+  h.querySelector('.favall').onclick = e => { e.stopPropagation(); openFavs(); };
+  h.querySelector('.favplay:not(.favall)').onclick = () => { startPlaylist({ name: 'Favourite lines', items: list.map(f => ({ m: f.m, t0: f.t0, t1: f.t1, label: f.text })) }, 0); closeLib(); };
   list.forEach(f => {
     const t = tracks.find(x => x.id === f.m), d = document.createElement('div'); d.className = 'item fav';
-    d.innerHTML = `<span class="favstar">★</span><div style="min-width:0;flex:1"><div class="ftx"></div><div class="mt"><span>${esc(t.title)}</span><span>· ${short(f.t0)}</span></div></div><button class="idel" title="Remove" aria-label="Remove from favourites">✕</button>`;
+    d.innerHTML = `<span class="favstar">★</span><div style="min-width:0;flex:1"><div class="ftx"></div><div class="mt"><span>${esc(t.title)}</span><span>· ${short(f.t0)}</span></div></div><button class="idel icopy" title="Copy" aria-label="Copy this line">${COPY_ICON}</button><button class="idel" title="Remove" aria-label="Remove from favourites">✕</button>`;
     d.querySelector('.ftx').textContent = f.text;
+    d.querySelector('.icopy').onclick = e => { e.stopPropagation(); copyText(f.text); };
     d.onclick = () => { stopPlaylist(); closeLib(); const go = () => { audio.currentTime = f.t0; audio.play().catch(() => {}); }; if (cur === t) go(); else { select(t); audio.addEventListener('loadedmetadata', go, { once: true }); } };
-    d.querySelector('.idel').onclick = e => { e.stopPropagation(); favs.splice(favs.indexOf(f), 1); localStorage.setItem(favKey(), JSON.stringify(favs)); markFavs(); renderLib(); };
+    d.querySelector('.idel:not(.icopy)').onclick = e => { e.stopPropagation(); favs.splice(favs.indexOf(f), 1); localStorage.setItem(favKey(), JSON.stringify(favs)); markFavs(); renderLib(); };
     L.appendChild(d);
   });
 }
@@ -1233,7 +1264,7 @@ async function quoteToPad(f, title) {
   if (!navigator.onLine) { toast('Saved here. It will not reach Progress Pad Quotes while you are offline.', true); return; }
   const { data, error } = await supabase.from('writing_entries').insert({ user_id: user.id, on_date: dayOf(), kind: 'quotes', title: f.text.slice(0, 500), notes: `From "${title}" on MemoPad` }).select('id').single();
   if (error) { toast('Saved here, but it could not reach Progress Pad: ' + error.message, true); return; }
-  f.pp = data.id; localStorage.setItem(favKey(), JSON.stringify(favs)); toast('Saved to favourites and your Progress Pad Quotes ★', false, 2500);
+  f.pp = data.id; localStorage.setItem(favKey(), JSON.stringify(favs)); toast('Saved to favourites and your Progress Pad Quotes ★', false, 3500, { label: 'Copy', run: () => copyText(f.text) });
 }
 
 

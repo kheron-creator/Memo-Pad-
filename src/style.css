@@ -495,3 +495,10 @@ body.resizing{cursor:col-resize;user-select:none}
 
 .vizsw,.vizfs{transition:opacity .4s}
 #waveWrap.idle .vizsw,#waveWrap.idle .vizfs{opacity:0;pointer-events:none}
+
+/* header: one row + tagline banner */
+.brand{gap:9px;margin-bottom:12px}
+.brand .blogo{width:28px;height:28px;flex:0 0 28px;border-radius:7px}
+.brand .bname{font-family:var(--head);font-weight:800;font-size:21px;white-space:nowrap}
+.tagban{margin:0 2px 14px;border-radius:14px;padding:10px 14px;background:linear-gradient(90deg,#25DD5F22,#FFB00022,#E1019522);font-family:var(--head);font-weight:700;font-size:15px;text-align:center;color:#fff}
+.tagban span{color:var(--green)}

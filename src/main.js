@@ -607,14 +607,54 @@ function drawMiniWave(d, cv, wx, t, cols) {
   for (let i = i0; i < i1; i++) { const x = W / 2 + (i / BPS - t) * pps, v = p[i], h = Math.max(2 * d, v * H * 0.5), w = Math.max(1.5 * d, bw * 0.42); wx.fillStyle = lerpCol(cols, v * 0.75 + (i / p.length) * 0.25); wx.globalAlpha = i / BPS <= t ? 1 : 0.4; rrect(wx, x - w / 2, mid - h / 2, w, h, w / 2); }
   wx.globalAlpha = 1; wx.fillStyle = '#5AA9FF'; wx.fillRect(W / 2 - d, mid - H * 0.3, 2 * d, H * 0.6);
 }
+// live sound analysis: a silent twin of the player feeds an analyser, so the main audio
+// is never routed through Web Audio (that keeps lock screen and car playback safe)
+let an = null;
+const vizOn = () => (vizStyle !== 'wave' && mode === 'wave') || !$('vFull').hidden;
+function anEnsure() {
+  if (an) return an;
+  try {
+    const el = new Audio(); el.crossOrigin = 'anonymous'; el.preload = 'auto'; el.playsInline = true; el.setAttribute('playsinline', '');
+    const ac = new (window.AudioContext || window.webkitAudioContext)(), src = ac.createMediaElementSource(el), a = ac.createAnalyser(), g = ac.createGain();
+    a.fftSize = 512; a.smoothingTimeConstant = 0.72; g.gain.value = 0; src.connect(a); a.connect(g); g.connect(ac.destination);
+    an = { el, ac, a, data: new Uint8Array(a.frequencyBinCount), url: '' };
+  } catch { an = { dead: true }; }
+  return an;
+}
+function anSync(gesture) {
+  if (gesture && vizOn() && cur) { // unlock the twin and the audio context inside a tap, so it can start later by itself
+    const A = anEnsure(); if (A.dead) return;
+    if (A.ac.state !== 'running') A.ac.resume().catch(() => {});
+    const u = audio.currentSrc || audio.src; if (u && A.url !== u) { A.url = u; A.el.src = u; }
+    if (!A.started && !A.pending && u) { A.pending = true; A.el.play().then(() => { A.started = true; A.pending = false; if (audio.paused) A.el.pause(); }).catch(() => { A.pending = false; }); }
+  }
+  if (!vizOn() || !cur || audio.paused || document.hidden) { if (an && an.el && !an.el.paused && !an.pending) an.el.pause(); return; }
+  const A = anEnsure(); if (A.dead) return;
+  const u = audio.currentSrc || audio.src; if (u && A.url !== u) { A.url = u; A.el.src = u; }
+  A.el.playbackRate = audio.playbackRate || 1;
+  if (A.el.readyState >= 1 && Math.abs(A.el.currentTime - audio.currentTime) > 0.3) A.el.currentTime = audio.currentTime;
+  if (A.el.paused && A.started && !A.pending) { A.pending = true; A.el.play().then(() => { A.pending = false; }).catch(() => { A.pending = false; }); }
+}
+addEventListener('pointerdown', () => anSync(true), true);
+addEventListener('keydown', () => anSync(true), true);
+function anLevels() {
+  if (!an || an.dead || !an.el || an.el.paused || an.ac.state !== 'running') return null;
+  an.a.getByteFrequencyData(an.data); let s = 0; for (let i = 2; i < 120; i++) s += an.data[i];
+  return s > 0 ? an.data : null;
+}
+// 32 bands spread across the voice and music range (roughly 80 Hz to 8 kHz)
+const BANDS = Array.from({ length: 33 }, (_, k) => Math.round(2 + Math.pow(k / 32, 1.7) * 92));
 function drawViz(d, cv = wv, wx = cv.getContext('2d'), style = vizStyle) {
+  anSync(false); const F = anLevels();
   const W = cv.width, H = cv.height, t = audio.currentTime || 0, cols = THEMES[theme], now = performance.now() / 1000;
-  const playing = cur && !audio.paused, target = playing ? Math.min(1, level(t) * 1.25) : 0.06 + 0.03 * Math.sin(now * 1.6);
+  let live = null;
+  if (F) { live = []; let tot = 0; for (let k = 0; k < 32; k++) { let m = 0; for (let i = BANDS[k]; i < Math.max(BANDS[k] + 1, BANDS[k + 1]); i++) m = Math.max(m, F[i]); const v = Math.pow(m / 255, 1.6) * (1 + k / 40); live.push(v); tot += v; } live.avg = tot / 32; }
+  const playing = cur && !audio.paused, target = live ? Math.min(1, live.avg * 1.6) : playing ? Math.min(1, level(t) * 1.25) : 0.06 + 0.03 * Math.sin(now * 1.6);
   vizEnv += (target - vizEnv) * (target > vizEnv ? 0.45 : 0.12);
   vizHist.unshift(vizEnv); vizHist.length = 64;
   wx.clearRect(0, 0, W, H); wx.fillStyle = '#0b0b0d'; wx.fillRect(0, 0, W, H);
   const cx = W / 2, cy = H / 2, M = Math.min(W, H), e = vizEnv;
-  const band = k => { const N = 32, f = k / N; return Math.max(0.03, e * (0.5 + 0.5 * Math.sin(k * 0.9 + now * 4.2 + vizHist[k % 64] * 7)) * (1 - f * 0.55) + vizHist[Math.min(63, k)] * 0.25); };
+  const band = live ? (k => Math.max(0.03, Math.min(1, live[k % 32] * 1.15))) : k => { const N = 32, f = k / N; return Math.max(0.03, e * (0.5 + 0.5 * Math.sin(k * 0.9 + now * 4.2 + vizHist[k % 64] * 7)) * (1 - f * 0.55) + vizHist[Math.min(63, k)] * 0.25); };
   if (style === 'bars') {
     const N = 32, gap = 3 * d, bw = Math.min(18 * d, (W * 0.86 / (N * 2)) - gap), x0 = cx - (N * (bw + gap));
     for (let k = 0; k < N; k++) {

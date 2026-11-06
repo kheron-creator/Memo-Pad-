@@ -314,7 +314,12 @@ function renderLib() {
       const d = document.createElement('div'); d.className = 'item vm' + (t === cur ? ' on' : '') + (t === cur && !audio.paused ? ' playing' : '');
       const tags = [t.category ? `<span class="cat">${esc(t.category)}</span>` : '', isOwn(t) && t.is_public ? '<span class="sh">public</span>' : '', offline.has(t.id) ? '<span class="sh">offline</span>' : '', txing === t ? '<span class="sh">transcribing…</span>' : txQueue.includes(t) ? '<span class="sh">waiting</span>' : ''].join('');
       d.innerHTML = `<div class="vmain"><div class="nm">${esc(t.title)}</div><div class="mt"><span>${when(t.added)}</span>${stats.plays && stats.plays[t.id] ? `<span class="plays" title="Times played">▶ ${stats.plays[t.id]}</span>` : ''}${t.words.length ? txIcon : ''}${tags}</div></div><div class="vdur">${short(t.duration)}</div>`;
-      d.onclick = () => { if (t === cur) { libFold = !libFold; renderLib(); return; } stopPlaylist(); libFold = false; select(t).then(() => audio.play().catch(() => {})); renderLib(); };
+      // tap the title to play straight away; tap anywhere else on the row to open it (tap again to fold)
+      d.onclick = e => {
+        const onTitle = !!e.target.closest('.nm');
+        if (t === cur) { if (onTitle) { libFold = false; togglePlay(); } else libFold = !libFold; renderLib(); return; }
+        stopPlaylist(); libFold = false; const p = select(t); if (onTitle) p.then(() => audio.play().catch(() => {})); renderLib();
+      };
       const acts = document.createElement('div'); acts.className = 'vacts';
       { const a = document.createElement('button'); a.className = 'idel iadd'; a.title = 'Add to a playlist'; a.setAttribute('aria-label', 'Add ' + t.title + ' to a playlist'); a.textContent = '+'; a.onclick = e => { e.stopPropagation(); openAddPl({ m: t.id, label: t.title }); }; acts.appendChild(a); }
       if (isOwn(t)) { const x = document.createElement('button'); x.className = 'idel'; x.title = 'Delete'; x.setAttribute('aria-label', 'Delete ' + t.title); x.innerHTML = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>'; x.onclick = e => { e.stopPropagation(); deleteTrack(t); }; acts.appendChild(x); }

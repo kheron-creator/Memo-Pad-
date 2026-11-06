@@ -525,3 +525,5 @@ body.resizing{cursor:col-resize;user-select:none}
 .vmenu button.del,.vmenu button.del i{color:#ff5c5c}
 @media (hover:hover){.vmenu button:hover{background:#ffffff0d}}
 .item.vm .nm.editing{white-space:normal;outline:2px solid #5AA9FF;border-radius:6px;padding:0 4px;cursor:text;color:#fff}
+
+.toast .tq{display:block;font-family:var(--body);font-size:17px;font-weight:600;line-height:1.35;color:#fff;margin-bottom:6px;max-width:420px;white-space:normal}

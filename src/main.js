@@ -1320,6 +1320,11 @@ addEventListener('keydown', e => { if (e.key === 'Escape' && !$('reader').hidden
 
 
 // ---------- favourite lines (kept on this device) ----------
+// the "saved" pop-up shows the line you just saved
+function favToast(f, msg) {
+  toast(msg, false, 5000, { label: 'Copy', run: () => copyText(f.text) });
+  const q = document.createElement('div'); q.className = 'tq'; q.textContent = `“${f.text}”`; $('toast').prepend(q);
+}
 const COPY_ICON = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M15.5 8.5V6.5a2 2 0 0 0-2-2h-7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h2"/></svg>';
 async function copyText(t) {
   try { await navigator.clipboard.writeText(t); }
@@ -1357,7 +1362,7 @@ function toggleFav(j, k) {
   if (x >= 0) { const f = favs.splice(x, 1)[0]; toast(f.pp ? 'Removed from favourites. It stays in your Progress Pad Quotes.' : 'Removed from favourites.', false, 2500); }
   else {
     const W = cur.words, f = { m: cur.id, j, k, t0: sentStart(j), t1: W[k].end + 0.35, text: W.slice(j, k + 1).map(w => w.text).join(' ') };
-    favs.unshift(f); toast('Saved to favourites ★', false, 3500, { label: 'Copy', run: () => copyText(f.text) }); quoteToPad(f, cur.title);
+    favs.unshift(f); favToast(f, 'Saved to favourites ★'); quoteToPad(f, cur.title);
   }
   localStorage.setItem(favKey(), JSON.stringify(favs)); markFavs(); renderLib(); if ($('favDlg').classList.contains('open')) renderFavDlg();
 }
@@ -1494,7 +1499,7 @@ async function quoteToPad(f, title) {
   if (!navigator.onLine) { toast('Saved here. It will not reach Progress Pad Quotes while you are offline.', true); return; }
   const { data, error } = await supabase.from('writing_entries').insert({ user_id: user.id, on_date: dayOf(), kind: 'quotes', title: f.text.slice(0, 500), notes: `From "${title}" on MemoPad` }).select('id').single();
   if (error) { toast('Saved here, but it could not reach Progress Pad: ' + error.message, true); return; }
-  f.pp = data.id; localStorage.setItem(favKey(), JSON.stringify(favs)); toast('Saved to favourites and your Progress Pad Quotes ★', false, 3500, { label: 'Copy', run: () => copyText(f.text) });
+  f.pp = data.id; localStorage.setItem(favKey(), JSON.stringify(favs)); favToast(f, 'Saved to favourites and your Progress Pad Quotes ★');
 }
 
 

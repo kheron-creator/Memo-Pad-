@@ -556,20 +556,26 @@ function sizeCanvas(c) { const r = c.getBoundingClientRect(), d = devicePixelRat
 const PX_PER_SEC = () => wv.width / 7.5; // about 7.5 seconds visible, like a voice memo
 function rrect(ctx, x, y, w, h, r) { ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(x, y, w, h, r); else ctx.rect(x, y, w, h); ctx.fill(); }
 // ---------- visualiser styles (driven by the memo's own sound levels, so it works with the screen locked or in the car) ----------
-let vizStyle = localStorage.getItem('mp.viz') || 'wave', vizEnv = 0, vizHist = new Array(64).fill(0);
-function setViz(v) { vizStyle = v; localStorage.setItem('mp.viz', v); $('waveWrap').classList.toggle('viz', v !== 'wave'); document.querySelectorAll('#vizSw button').forEach(b => b.classList.toggle('on', b.dataset.v === v)); }
-document.querySelectorAll('#vizSw button').forEach(b => b.onclick = e => { e.stopPropagation(); setViz(b.dataset.v); });
+let vizStyle = ['wave', 'bars', 'circle'].includes(localStorage.getItem('mp.viz')) ? localStorage.getItem('mp.viz') : 'wave', vizEnv = 0, vizHist = new Array(64).fill(0);
+function setViz(v) { vizStyle = v; localStorage.setItem('mp.viz', v); $('waveWrap').classList.toggle('viz', v !== 'wave'); document.querySelectorAll('#vizSw button, #vfSw button').forEach(b => b.classList.toggle('on', b.dataset.v === v)); }
+document.querySelectorAll('#vizSw button, #vfSw button').forEach(b => b.onclick = e => { e.stopPropagation(); setViz(b.dataset.v); });
 setViz(vizStyle);
 function level(t) { if (!cur || !cur.peaks) return 0; const p = cur.peaks, i = Math.floor(t * BPS); let m = 0, n = 0; for (let j = i - 1; j <= i + 1; j++) if (p[j] != null) { m += p[j]; n++; } return n ? m / n : 0; }
-function drawViz(d) {
-  const W = wv.width, H = wv.height, t = audio.currentTime || 0, cols = THEMES[theme], now = performance.now() / 1000;
+function drawMiniWave(d, cv, wx, t, cols) {
+  if (!cur || !cur.peaks) return; const W = cv.width, H = cv.height, p = cur.peaks, pps = W / 9, bw = pps / BPS, mid = H / 2;
+  const i0 = Math.max(0, Math.floor((t - W / 2 / pps) * BPS)), i1 = Math.min(p.length, Math.ceil((t + W / 2 / pps) * BPS) + 1);
+  for (let i = i0; i < i1; i++) { const x = W / 2 + (i / BPS - t) * pps, v = p[i], h = Math.max(2 * d, v * H * 0.5), w = Math.max(1.5 * d, bw * 0.42); wx.fillStyle = lerpCol(cols, v * 0.75 + (i / p.length) * 0.25); wx.globalAlpha = i / BPS <= t ? 1 : 0.4; rrect(wx, x - w / 2, mid - h / 2, w, h, w / 2); }
+  wx.globalAlpha = 1; wx.fillStyle = '#5AA9FF'; wx.fillRect(W / 2 - d, mid - H * 0.3, 2 * d, H * 0.6);
+}
+function drawViz(d, cv = wv, wx = cv.getContext('2d'), style = vizStyle) {
+  const W = cv.width, H = cv.height, t = audio.currentTime || 0, cols = THEMES[theme], now = performance.now() / 1000;
   const playing = cur && !audio.paused, target = playing ? Math.min(1, level(t) * 1.25) : 0.06 + 0.03 * Math.sin(now * 1.6);
   vizEnv += (target - vizEnv) * (target > vizEnv ? 0.45 : 0.12);
   vizHist.unshift(vizEnv); vizHist.length = 64;
   wx.clearRect(0, 0, W, H); wx.fillStyle = '#0b0b0d'; wx.fillRect(0, 0, W, H);
   const cx = W / 2, cy = H / 2, M = Math.min(W, H), e = vizEnv;
   const band = k => { const N = 32, f = k / N; return Math.max(0.03, e * (0.5 + 0.5 * Math.sin(k * 0.9 + now * 4.2 + vizHist[k % 64] * 7)) * (1 - f * 0.55) + vizHist[Math.min(63, k)] * 0.25); };
-  if (vizStyle === 'bars') {
+  if (style === 'bars') {
     const N = 32, gap = 3 * d, bw = Math.min(18 * d, (W * 0.86 / (N * 2)) - gap), x0 = cx - (N * (bw + gap));
     for (let k = 0; k < N; k++) {
       const h = Math.max(4 * d, band(k) * H * 0.8), col = lerpCol(cols, k / N);
@@ -577,37 +583,34 @@ function drawViz(d) {
       rrect(wx, cx + k * (bw + gap) + gap / 2, cy - h / 2, bw, h, bw / 2);
       rrect(wx, cx - (k + 1) * (bw + gap) + gap / 2, cy - h / 2, bw, h, bw / 2);
     }
-  } else if (vizStyle === 'circle') {
-    const N = 72, r0 = M * 0.2 + e * M * 0.05;
+  } else if (style === 'circle') {
+    const N = 72, r0 = M * 0.17 + e * M * 0.04;
     wx.lineCap = 'round'; wx.lineWidth = Math.max(3 * d, (2 * Math.PI * r0 / N) * 0.55);
     for (let k = 0; k < N; k++) {
-      const a = k / N * Math.PI * 2 - Math.PI / 2, kk = k < N / 2 ? k : N - k, len = band(kk % 32) * M * 0.24 + 3 * d;
+      const a = k / N * Math.PI * 2 - Math.PI / 2, kk = k < N / 2 ? k : N - k, len = band(kk % 32) * M * 0.2 + 3 * d;
       wx.strokeStyle = lerpCol(cols, kk / (N / 2)); wx.beginPath();
       wx.moveTo(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0); wx.lineTo(cx + Math.cos(a) * (r0 + len), cy + Math.sin(a) * (r0 + len)); wx.stroke();
     }
     wx.fillStyle = '#ffffff10'; wx.beginPath(); wx.arc(cx, cy, r0 - 6 * d, 0, 7); wx.fill();
-  } else if (vizStyle === 'orb') {
-    for (let k = 4; k >= 0; k--) {
-      const r = M * (0.12 + k * 0.07) * (1 + e * (0.5 + k * 0.12)), g = wx.createRadialGradient(cx, cy, r * 0.2, cx, cy, r);
-      const c = lerpCol(cols, k / 4); g.addColorStop(0, c); g.addColorStop(1, 'rgba(0,0,0,0)');
-      wx.globalAlpha = 0.22 + (4 - k) * 0.1; wx.fillStyle = g; wx.beginPath(); wx.arc(cx, cy, r, 0, 7); wx.fill();
-    }
-    wx.globalAlpha = 1; wx.fillStyle = '#fff'; wx.globalAlpha = 0.85; wx.beginPath(); wx.arc(cx, cy, M * 0.05 * (1 + e * 0.8), 0, 7); wx.fill(); wx.globalAlpha = 1;
-  } else if (vizStyle === 'line') {
-    wx.lineWidth = 3 * d; wx.lineCap = 'round';
-    for (let s = 0; s < 3; s++) {
-      wx.strokeStyle = cols[(s * 2) % cols.length]; wx.globalAlpha = 0.9 - s * 0.2; wx.beginPath();
-      for (let x = 0; x <= W; x += 4 * d) {
-        const f = x / W, env = vizHist[Math.min(63, Math.floor(Math.abs(f - 0.5) * 2 * 63))], y = cy + Math.sin(f * Math.PI * (3 + s) + now * (2 + s * 0.7)) * env * H * 0.36 * Math.sin(f * Math.PI);
-        x ? wx.lineTo(x, y) : wx.moveTo(x, y);
-      }
-      wx.stroke();
-    }
-    wx.globalAlpha = 1;
   }
-  if (cur && cur.chapters.length > 1) { const k = chapterAt(t); if (k >= 0) { wx.font = `600 ${13 * d}px Poppins`; wx.textAlign = 'center'; wx.fillStyle = '#8e8e93'; wx.fillText(cur.chapters[k].title.toUpperCase().slice(0, 40), cx, H - 14 * d); wx.textAlign = 'start'; } }
+  if (style === 'wave') drawMiniWave(d, cv, wx, t, cols);
+  if (cv === wv && cur && cur.chapters.length > 1) { const k = chapterAt(t); if (k >= 0) { wx.font = `600 ${13 * d}px Poppins`; wx.textAlign = 'center'; wx.fillStyle = '#8e8e93'; wx.fillText(cur.chapters[k].title.toUpperCase().slice(0, 40), cx, H - 14 * d); wx.textAlign = 'start'; } }
+}
+// full screen visualiser with the affirmation you're hearing
+const vfc = $('vfCanvas'); let vfShown = -1, vfHideT = 0;
+function vfPoke() { $('vFull').classList.add('ctl'); clearTimeout(vfHideT); vfHideT = setTimeout(() => { if (!audio.paused) $('vFull').classList.remove('ctl'); }, 3500); }
+function openVizFull() { if (!cur) return; $('vFull').hidden = false; vfShown = -1; vfPoke(); goFull($('vFull')); try { navigator.wakeLock?.request('screen').then(w => { vfWake = w; }).catch(() => {}); } catch {} }
+let vfWake = null;
+function closeVizFull() { $('vFull').hidden = true; exitFull(); try { vfWake && vfWake.release(); } catch {} vfWake = null; }
+function drawVizFull() {
+  if ($('vFull').hidden || !cur) return; const d = sizeCanvas(vfc), t = audio.currentTime || 0;
+  drawViz(d, vfc, vfc.getContext('2d'), vizStyle);
+  $('vfPlay').classList.toggle('on', !audio.paused);
+  if (cur.words.length) { const a = Math.max(0, activeWord(t)), [j, e] = sentenceAt(a); if (j !== vfShown) { vfShown = j; const R = $('vfSent'); R.innerHTML = ''; for (let i = j; i <= e; i++) { const sp = document.createElement('span'); sp.className = 'rw'; sp.dataset.i = i; sp.textContent = cur.words[i].text; R.append(sp, ' '); } } $('vfSent').querySelectorAll('.rw').forEach(sp => { const i = +sp.dataset.i; sp.classList.toggle('past', i < a); sp.classList.toggle('now', i === a); }); }
+  else if (vfShown !== -2) { vfShown = -2; $('vfSent').textContent = cur.title; }
 }
 function drawWave() {
+  drawVizFull(); if (!$('vFull').hidden) return;
   if (mode !== 'wave') return;
   if (vizStyle !== 'wave') { drawViz(sizeCanvas(wv)); return; }
   const d = sizeCanvas(wv); sizeCanvas(ru); const W = wv.width, H = wv.height, t = audio.currentTime || 0, pps = PX_PER_SEC(), cols = THEMES[theme];
@@ -1416,6 +1419,16 @@ addEventListener('keydown', e => {
   if (!$('libSearch').hidden) { $('libSearchBtn').click(); return; }
   if (mode === 'tx') setMode('wave');
 });
+
+// ---------- full screen visualiser controls ----------
+$('vizFs').onclick = e => { e.stopPropagation(); openVizFull(); };
+$('vfClose').onclick = e => { e.stopPropagation(); closeVizFull(); };
+$('vfPlay').onclick = e => { e.stopPropagation(); togglePlay(); vfPoke(); };
+holdable($('vfPrev'), -1); holdable($('vfNext'), 1);
+['vfPrev', 'vfNext'].forEach(id => $(id).addEventListener('click', vfPoke));
+$('vFull').addEventListener('click', e => { if (e.target.closest('button')) { vfPoke(); return; } const F = $('vFull'); if (F.classList.contains('ctl') && !audio.paused) { clearTimeout(vfHideT); F.classList.remove('ctl'); } else vfPoke(); });
+document.addEventListener('fullscreenchange', () => { if (!fsEl() && !$('vFull').hidden) closeVizFull(); });
+addEventListener('keydown', e => { if (e.key === 'Escape' && !$('vFull').hidden) { e.preventDefault(); closeVizFull(); } });
 
 // ---------- light mode for read-along / full screen ----------
 function setReaderLight(on) { $('reader').classList.toggle('light', on); $('rLight').textContent = on ? 'Dark mode' : 'Light mode'; localStorage.setItem('mp.readerLight', on ? '1' : ''); }

@@ -463,3 +463,15 @@ body.resizing{cursor:col-resize;user-select:none}
 .vizsw button.on{background:#2a2a30;color:#fff}
 #waveWrap.viz #ruler{display:none}
 #waveWrap.viz #wave{height:100%;border-radius:18px;cursor:default}
+
+.vizfs{position:absolute;right:8px;top:6px;z-index:2;width:32px;height:32px;border-radius:50%;border:1px solid #2c2c31;background:#111113cc;color:#ddd;display:grid;place-items:center}
+.vfull{position:fixed;inset:0;z-index:65;background:#0b0b0d;display:flex;flex-direction:column}
+.vfull[hidden]{display:none}
+.vfull canvas{flex:1;width:100%;min-height:0;display:block;margin-top:calc(64px + env(safe-area-inset-top))}
+.vfsent{text-align:center;font-size:clamp(24px,4.6vw,46px);line-height:1.3;font-weight:600;padding:0 7% calc(130px + env(safe-area-inset-bottom));min-height:3.2em}
+.vftop{position:absolute;top:calc(14px + env(safe-area-inset-top));left:16px;right:16px;display:flex;justify-content:center;align-items:center}
+.vftop .rclose{position:absolute;right:0;top:0}
+.vfsw{position:static;transform:none}
+.vfctl{left:0;right:0;justify-content:center}
+.vfull .vftop,.vfull .vfctl{transition:opacity .3s}
+.vfull:not(.ctl) .vftop,.vfull:not(.ctl) .vfctl{opacity:0;pointer-events:none}

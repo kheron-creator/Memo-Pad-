@@ -259,6 +259,40 @@ function renderCats() {
 }
 $('libq').addEventListener('input', () => renderLib());
 function textOf(t) { if (t._text == null) t._text = norm(t.words.map(w => w.text).join(' ')); return t._text; }
+// ---------- Voice Memos style: tap a memo to open a small player right in the list ----------
+let libFold = false;
+const IC = {
+  wave: '<svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><rect x="3" y="10" width="2" height="4" rx="1"/><rect x="7" y="7" width="2" height="10" rx="1"/><rect x="11" y="4" width="2" height="16" rx="1"/><rect x="15" y="8" width="2" height="8" rx="1"/><rect x="19" y="10.5" width="2" height="3" rx="1"/></svg>',
+  back: '<svg viewBox="0 0 52 52" width="30" height="30" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round"><path d="M26 9a17 17 0 1 1-15.6 10.2"/><path d="M26 3v12l-8-6z" fill="currentColor" stroke="none"/><text x="26" y="33" font-size="15" font-weight="800" text-anchor="middle" fill="currentColor" stroke="none" font-family="Poppins">15</text></svg>',
+  fwd: '<svg viewBox="0 0 52 52" width="30" height="30" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round"><path d="M26 9a17 17 0 1 0 15.6 10.2"/><path d="M26 3v12l8-6z" fill="currentColor" stroke="none"/><text x="26" y="33" font-size="15" font-weight="800" text-anchor="middle" fill="currentColor" stroke="none" font-family="Poppins">15</text></svg>',
+  play: '<svg viewBox="0 0 24 24" width="30" height="30" fill="currentColor"><path d="M7 4.5v15a1 1 0 0 0 1.5.86l12.5-7.5a1 1 0 0 0 0-1.72L8.5 3.64A1 1 0 0 0 7 4.5z"/></svg>',
+  pause: '<svg viewBox="0 0 24 24" width="30" height="30" fill="currentColor"><rect x="5.5" y="4" width="4.5" height="16" rx="1.2"/><rect x="14" y="4" width="4.5" height="16" rx="1.2"/></svg>',
+  bin: '<svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>',
+};
+function libRowPlayer(t) {
+  const x = document.createElement('div'); x.className = 'vexp';
+  x.innerHTML = `<div class="vbar"><i></i><b></b></div><div class="vtimes"><span class="vnow">0:00</span><span class="vrem">-${short(t.duration)}</span></div>
+    <div class="vctl"><button type="button" class="vb vwave" title="Open the full player" aria-label="Open the full player">${IC.wave}</button><span class="vmid"><button type="button" class="vb" data-a="back" aria-label="Back 15 seconds">${IC.back}</button><button type="button" class="vb vplay" data-a="play" aria-label="Play">${audio.paused ? IC.play : IC.pause}</button><button type="button" class="vb" data-a="fwd" aria-label="Forward 15 seconds">${IC.fwd}</button></span>${isOwn(t) ? `<button type="button" class="vb vbin" title="Delete" aria-label="Delete ${esc(t.title)}">${IC.bin}</button>` : '<span class="vb"></span>'}</div>`;
+  x.addEventListener('click', e => e.stopPropagation());
+  x.querySelector('.vwave').onclick = () => closeLib();
+  x.querySelector('[data-a=back]').onclick = () => jump(-15);
+  x.querySelector('[data-a=fwd]').onclick = () => jump(15);
+  x.querySelector('.vplay').onclick = () => togglePlay();
+  x.querySelector('.vbin')?.addEventListener('click', () => deleteTrack(t));
+  const bar = x.querySelector('.vbar'); let dragging = false;
+  const seek = e => { const r = bar.getBoundingClientRect(); audio.currentTime = clamp((e.clientX - r.left) / r.width, 0, 1) * dur(); updateLibRow(); };
+  bar.addEventListener('pointerdown', e => { dragging = true; bar.setPointerCapture(e.pointerId); seek(e); });
+  bar.addEventListener('pointermove', e => dragging && seek(e));
+  bar.addEventListener('pointerup', () => dragging = false);
+  return x;
+}
+function updateLibRow() {
+  const x = document.querySelector('#lib .vexp'); if (!x || !cur) return;
+  const t = audio.currentTime || 0, D = dur() || 1, pc = clamp(t / D, 0, 1) * 100 + '%';
+  x.querySelector('.vbar i').style.width = pc; x.querySelector('.vbar b').style.left = pc;
+  x.querySelector('.vnow').textContent = short(t); x.querySelector('.vrem').textContent = '-' + short(Math.max(0, D - t));
+}
+
 // the memo you played most recently sits at the top of the list
 const recentKey = () => 'mp.recent.' + (user ? user.id : 'x');
 let _recent = null;
@@ -280,11 +314,12 @@ function renderLib() {
       const d = document.createElement('div'); d.className = 'item vm' + (t === cur ? ' on' : '') + (t === cur && !audio.paused ? ' playing' : '');
       const tags = [t.category ? `<span class="cat">${esc(t.category)}</span>` : '', isOwn(t) && t.is_public ? '<span class="sh">public</span>' : '', offline.has(t.id) ? '<span class="sh">offline</span>' : '', txing === t ? '<span class="sh">transcribing…</span>' : txQueue.includes(t) ? '<span class="sh">waiting</span>' : ''].join('');
       d.innerHTML = `<div class="vmain"><div class="nm">${esc(t.title)}</div><div class="mt"><span>${when(t.added)}</span>${stats.plays && stats.plays[t.id] ? `<span class="plays" title="Times played">▶ ${stats.plays[t.id]}</span>` : ''}${t.words.length ? txIcon : ''}${tags}</div></div><div class="vdur">${short(t.duration)}</div>`;
-      d.onclick = () => { stopPlaylist(); select(t); closeLib(); };
+      d.onclick = () => { if (t === cur) { libFold = !libFold; renderLib(); return; } stopPlaylist(); libFold = false; select(t); renderLib(); };
       const acts = document.createElement('div'); acts.className = 'vacts';
       { const a = document.createElement('button'); a.className = 'idel iadd'; a.title = 'Add to a playlist'; a.setAttribute('aria-label', 'Add ' + t.title + ' to a playlist'); a.textContent = '+'; a.onclick = e => { e.stopPropagation(); openAddPl({ m: t.id, label: t.title }); }; acts.appendChild(a); }
       if (isOwn(t)) { const x = document.createElement('button'); x.className = 'idel'; x.title = 'Delete'; x.setAttribute('aria-label', 'Delete ' + t.title); x.innerHTML = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>'; x.onclick = e => { e.stopPropagation(); deleteTrack(t); }; acts.appendChild(x); }
       d.appendChild(acts);
+      if (t === cur && !libFold) d.appendChild(libRowPlayer(t));
       L.appendChild(d);
     });
   };
@@ -916,7 +951,7 @@ function loop() {
     tickStats(t); tickPlaylist(t); tickRep(t); if (!$('reader').hidden) tickReader(t);
     updateTranscript(); if (++ovTick % 6 === 0) drawOverview();
   }
-  drawWave(); requestAnimationFrame(loop);
+  drawWave(); updateLibRow(); requestAnimationFrame(loop);
 }
 addEventListener('resize', drawOverview);
 audio.addEventListener('seeked', () => { userScrollUntil = 0; lastW = -2; updateTranscript(); scrollToActive(true); drawOverview(); });

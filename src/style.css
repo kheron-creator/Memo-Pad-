@@ -475,3 +475,20 @@ body.resizing{cursor:col-resize;user-select:none}
 .vfctl{left:0;right:0;justify-content:center}
 .vfull .vftop,.vfull .vfctl{transition:opacity .3s}
 .vfull:not(.ctl) .vftop,.vfull:not(.ctl) .vfctl{opacity:0;pointer-events:none}
+
+/* Voice Memos style row player */
+.item.vm.on:has(.vexp){flex-wrap:wrap;background:#ffffff0c}
+.item.vm.on:has(.vexp) .vacts{display:none}
+.item.vm.on:has(.vexp) .vdur{display:block}
+.vexp{flex:0 0 100%;padding:10px 0 2px;cursor:default}
+.vbar{position:relative;height:18px;touch-action:none;cursor:pointer}
+.vbar::before{content:'';position:absolute;left:0;right:0;top:7px;height:4px;border-radius:2px;background:#ffffff26}
+.vbar i{position:absolute;left:0;top:7px;height:4px;border-radius:2px;background:#d6d6db;width:0}
+.vbar b{position:absolute;top:9px;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:50%;background:#fff;box-shadow:0 1px 4px #0008}
+.vtimes{display:flex;justify-content:space-between;color:var(--mute);font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;margin-top:2px}
+.vctl{display:flex;align-items:center;justify-content:space-between;margin-top:4px}
+.vmid{display:flex;align-items:center;gap:22px}
+.vb{border:0;background:none;color:#fff;width:42px;height:42px;display:grid;place-items:center;border-radius:50%;padding:0}
+.vb.vwave,.vb.vbin{color:#5AA9FF}
+.vb.vplay{width:48px;height:48px}
+@media (hover:hover){.vb:hover{background:#ffffff12}}

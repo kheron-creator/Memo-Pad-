@@ -555,8 +555,61 @@ let drag = null;
 function sizeCanvas(c) { const r = c.getBoundingClientRect(), d = devicePixelRatio || 1; if (c.width !== Math.round(r.width * d) || c.height !== Math.round(r.height * d)) { c.width = Math.round(r.width * d); c.height = Math.round(r.height * d); } return d; }
 const PX_PER_SEC = () => wv.width / 7.5; // about 7.5 seconds visible, like a voice memo
 function rrect(ctx, x, y, w, h, r) { ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(x, y, w, h, r); else ctx.rect(x, y, w, h); ctx.fill(); }
+// ---------- visualiser styles (driven by the memo's own sound levels, so it works with the screen locked or in the car) ----------
+let vizStyle = localStorage.getItem('mp.viz') || 'wave', vizEnv = 0, vizHist = new Array(64).fill(0);
+function setViz(v) { vizStyle = v; localStorage.setItem('mp.viz', v); $('waveWrap').classList.toggle('viz', v !== 'wave'); document.querySelectorAll('#vizSw button').forEach(b => b.classList.toggle('on', b.dataset.v === v)); }
+document.querySelectorAll('#vizSw button').forEach(b => b.onclick = e => { e.stopPropagation(); setViz(b.dataset.v); });
+setViz(vizStyle);
+function level(t) { if (!cur || !cur.peaks) return 0; const p = cur.peaks, i = Math.floor(t * BPS); let m = 0, n = 0; for (let j = i - 1; j <= i + 1; j++) if (p[j] != null) { m += p[j]; n++; } return n ? m / n : 0; }
+function drawViz(d) {
+  const W = wv.width, H = wv.height, t = audio.currentTime || 0, cols = THEMES[theme], now = performance.now() / 1000;
+  const playing = cur && !audio.paused, target = playing ? Math.min(1, level(t) * 1.25) : 0.06 + 0.03 * Math.sin(now * 1.6);
+  vizEnv += (target - vizEnv) * (target > vizEnv ? 0.45 : 0.12);
+  vizHist.unshift(vizEnv); vizHist.length = 64;
+  wx.clearRect(0, 0, W, H); wx.fillStyle = '#0b0b0d'; wx.fillRect(0, 0, W, H);
+  const cx = W / 2, cy = H / 2, M = Math.min(W, H), e = vizEnv;
+  const band = k => { const N = 32, f = k / N; return Math.max(0.03, e * (0.5 + 0.5 * Math.sin(k * 0.9 + now * 4.2 + vizHist[k % 64] * 7)) * (1 - f * 0.55) + vizHist[Math.min(63, k)] * 0.25); };
+  if (vizStyle === 'bars') {
+    const N = 32, gap = 3 * d, bw = Math.min(18 * d, (W * 0.86 / (N * 2)) - gap), x0 = cx - (N * (bw + gap));
+    for (let k = 0; k < N; k++) {
+      const h = Math.max(4 * d, band(k) * H * 0.8), col = lerpCol(cols, k / N);
+      wx.fillStyle = col;
+      rrect(wx, cx + k * (bw + gap) + gap / 2, cy - h / 2, bw, h, bw / 2);
+      rrect(wx, cx - (k + 1) * (bw + gap) + gap / 2, cy - h / 2, bw, h, bw / 2);
+    }
+  } else if (vizStyle === 'circle') {
+    const N = 72, r0 = M * 0.2 + e * M * 0.05;
+    wx.lineCap = 'round'; wx.lineWidth = Math.max(3 * d, (2 * Math.PI * r0 / N) * 0.55);
+    for (let k = 0; k < N; k++) {
+      const a = k / N * Math.PI * 2 - Math.PI / 2, kk = k < N / 2 ? k : N - k, len = band(kk % 32) * M * 0.24 + 3 * d;
+      wx.strokeStyle = lerpCol(cols, kk / (N / 2)); wx.beginPath();
+      wx.moveTo(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0); wx.lineTo(cx + Math.cos(a) * (r0 + len), cy + Math.sin(a) * (r0 + len)); wx.stroke();
+    }
+    wx.fillStyle = '#ffffff10'; wx.beginPath(); wx.arc(cx, cy, r0 - 6 * d, 0, 7); wx.fill();
+  } else if (vizStyle === 'orb') {
+    for (let k = 4; k >= 0; k--) {
+      const r = M * (0.12 + k * 0.07) * (1 + e * (0.5 + k * 0.12)), g = wx.createRadialGradient(cx, cy, r * 0.2, cx, cy, r);
+      const c = lerpCol(cols, k / 4); g.addColorStop(0, c); g.addColorStop(1, 'rgba(0,0,0,0)');
+      wx.globalAlpha = 0.22 + (4 - k) * 0.1; wx.fillStyle = g; wx.beginPath(); wx.arc(cx, cy, r, 0, 7); wx.fill();
+    }
+    wx.globalAlpha = 1; wx.fillStyle = '#fff'; wx.globalAlpha = 0.85; wx.beginPath(); wx.arc(cx, cy, M * 0.05 * (1 + e * 0.8), 0, 7); wx.fill(); wx.globalAlpha = 1;
+  } else if (vizStyle === 'line') {
+    wx.lineWidth = 3 * d; wx.lineCap = 'round';
+    for (let s = 0; s < 3; s++) {
+      wx.strokeStyle = cols[(s * 2) % cols.length]; wx.globalAlpha = 0.9 - s * 0.2; wx.beginPath();
+      for (let x = 0; x <= W; x += 4 * d) {
+        const f = x / W, env = vizHist[Math.min(63, Math.floor(Math.abs(f - 0.5) * 2 * 63))], y = cy + Math.sin(f * Math.PI * (3 + s) + now * (2 + s * 0.7)) * env * H * 0.36 * Math.sin(f * Math.PI);
+        x ? wx.lineTo(x, y) : wx.moveTo(x, y);
+      }
+      wx.stroke();
+    }
+    wx.globalAlpha = 1;
+  }
+  if (cur && cur.chapters.length > 1) { const k = chapterAt(t); if (k >= 0) { wx.font = `600 ${13 * d}px Poppins`; wx.textAlign = 'center'; wx.fillStyle = '#8e8e93'; wx.fillText(cur.chapters[k].title.toUpperCase().slice(0, 40), cx, H - 14 * d); wx.textAlign = 'start'; } }
+}
 function drawWave() {
   if (mode !== 'wave') return;
+  if (vizStyle !== 'wave') { drawViz(sizeCanvas(wv)); return; }
   const d = sizeCanvas(wv); sizeCanvas(ru); const W = wv.width, H = wv.height, t = audio.currentTime || 0, pps = PX_PER_SEC(), cols = THEMES[theme];
   wx.clearRect(0, 0, W, H); wx.fillStyle = '#36363b'; wx.fillRect(0, 0, W, H);
   if (!cur || !cur.peaks) return;

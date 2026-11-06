@@ -92,7 +92,11 @@
       </div>
     </div>
     <div class="view" id="view">
-      <div id="waveWrap"><canvas id="wave"></canvas><canvas id="ruler"></canvas></div>
+      <div id="waveWrap"><canvas id="wave"></canvas><canvas id="ruler"></canvas>
+        <div class="vizsw" id="vizSw" role="group" aria-label="View style">
+          <button type="button" data-v="wave">Waves</button><button type="button" data-v="bars">Bars</button><button type="button" data-v="circle">Circle</button><button type="button" data-v="orb">Pulse</button><button type="button" data-v="line">Ribbon</button>
+        </div>
+      </div>
       <div id="tx"></div>
       <button class="readic" id="readIc" title="Read-along mode" aria-label="Read-along mode"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
       <div class="repbar" id="repbar" hidden></div>

@@ -284,6 +284,36 @@ const IC = {
   pause: '<svg viewBox="0 0 24 24" width="30" height="30" fill="currentColor"><rect x="5.5" y="4" width="4.5" height="16" rx="1.2"/><rect x="14" y="4" width="4.5" height="16" rx="1.2"/></svg>',
   bin: '<svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>',
 };
+// the ⋯ menu on an open memo, like Voice Memos
+function libMoreBtn(t, row) {
+  const b = document.createElement('button'); b.type = 'button'; b.className = 'vmore'; b.title = 'More options'; b.setAttribute('aria-label', 'More options');
+  b.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>';
+  b.onclick = e => { e.stopPropagation(); const open = row.querySelector('.vmenu'); if (open) { open.remove(); return; } row.appendChild(libMenu(t, row)); };
+  return b;
+}
+function libMenu(t, row) {
+  const m = document.createElement('div'); m.className = 'vmenu'; const own = isOwn(t), hasTx = t.words.length > 0;
+  const items = [
+    own && ['Rename', '✎', () => renameInList(t, row)],
+    hasTx && ['Favourite this line', '☆', () => { const sn = nowSentence(); if (sn) toggleFav(sn[0], sn[1]); }],
+    hasTx && ['Copy transcript', '⧉', () => copyText(t.words.map(w => w.text).join(' ').replace(/\s+([,.!?;:])/g, '$1'))],
+    ['Edit in the full player', '〰', () => closeLib()],
+    ['Share', '↗', () => $('shareBtn').click()],
+    ['Add to a playlist', '+', () => openAddPl({ m: t.id, label: t.title })],
+    own && ['Delete', '🗑', () => deleteTrack(t), 'del'],
+  ].filter(Boolean);
+  items.forEach(([label, ic, run, cls]) => { const x = document.createElement('button'); x.type = 'button'; if (cls) x.className = cls; x.innerHTML = `<span>${label}</span><i>${ic}</i>`; x.onclick = e => { e.stopPropagation(); m.remove(); run(); }; m.appendChild(x); });
+  m.addEventListener('click', e => e.stopPropagation());
+  setTimeout(() => document.addEventListener('pointerdown', function off(e) { if (!m.contains(e.target) && !e.target.closest('.vmore')) { m.remove(); document.removeEventListener('pointerdown', off, true); } }, true));
+  return m;
+}
+function renameInList(t, row) {
+  const nm = row.querySelector('.nm'); if (!nm) return; libEditing = true; nm.contentEditable = 'true'; nm.classList.add('editing'); nm.focus();
+  const r = document.createRange(); r.selectNodeContents(nm); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
+  const stop = e => e.stopPropagation(); nm.addEventListener('click', stop);
+  nm.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') { e.preventDefault(); nm.blur(); } if (e.key === 'Escape') { nm.textContent = t.title; nm.blur(); } });
+  nm.addEventListener('blur', () => { nm.contentEditable = 'false'; nm.removeEventListener('click', stop); const v = nm.textContent.trim(); libEditing = false; if (v && v !== t.title) { t.title = v; if (t === cur) $('ttl').textContent = v; save(t); toast('Renamed ✓', false, 1500); } renderLib(); }, { once: true });
+}
 function libRowPlayer(t) {
   const x = document.createElement('div'); x.className = 'vexp';
   x.innerHTML = `<div class="vbar"><i></i><b></b></div><div class="vtimes"><span class="vnow">0:00</span><span class="vrem">-${short(t.duration)}</span></div>
@@ -314,7 +344,9 @@ const recentKey = () => 'mp.recent.' + (user ? user.id : 'x');
 let _recent = null, recentSnap = null; // the list order only changes when you pick another memo, so the one playing stays put
 function recentMap() { if (!_recent) { try { _recent = JSON.parse(localStorage.getItem(recentKey())) || {}; } catch { _recent = {}; } } return _recent; }
 function markRecent(t) { if (!t) return; const R = recentMap(); R[t.id] = Date.now(); try { localStorage.setItem(recentKey(), JSON.stringify(R)); } catch {} }
+let libEditing = false;
 function renderLib() {
+  if (libEditing || document.querySelector('#lib .vmenu')) return;
   const L = $('lib'); L.innerHTML = '';
   const q = norm($('libq').value.trim());
   const ok = t => (!catFilter || t.category === catFilter) && (!q || norm(t.title).includes(q) || textOf(t).includes(q));
@@ -339,7 +371,7 @@ function renderLib() {
       { const a = document.createElement('button'); a.className = 'idel iadd'; a.title = 'Add to a playlist'; a.setAttribute('aria-label', 'Add ' + t.title + ' to a playlist'); a.textContent = '+'; a.onclick = e => { e.stopPropagation(); openAddPl({ m: t.id, label: t.title }); }; acts.appendChild(a); }
       if (isOwn(t)) { const x = document.createElement('button'); x.className = 'idel'; x.title = 'Delete'; x.setAttribute('aria-label', 'Delete ' + t.title); x.innerHTML = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>'; x.onclick = e => { e.stopPropagation(); deleteTrack(t); }; acts.appendChild(x); }
       d.appendChild(acts);
-      if (t === cur && !libFold) d.appendChild(libRowPlayer(t));
+      if (t === cur && !libFold) { d.appendChild(libMoreBtn(t, d)); d.appendChild(libRowPlayer(t)); }
       else if (t === cur) { const th = document.createElement('div'); th.className = 'vthin'; th.innerHTML = '<i></i>'; d.appendChild(th); }
       L.appendChild(d);
     });

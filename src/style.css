@@ -512,3 +512,16 @@ body.resizing{cursor:col-resize;user-select:none}
 .item.vm.on:has(.vthin){flex-wrap:wrap}
 .vthin{flex:0 0 100%;height:3px;border-radius:2px;background:#ffffff1c;margin-top:8px;overflow:hidden}
 .vthin i{display:block;height:100%;width:0;background:var(--green)}
+
+/* ⋯ menu on the open memo */
+.item.vm{position:relative}
+.vmore{position:absolute;top:8px;right:6px;width:34px;height:34px;border:0;border-radius:50%;background:#ffffff10;color:#5AA9FF;display:grid;place-items:center;padding:0}
+.item.vm.on:has(.vmore) .vdur{margin-right:40px}
+.vmenu{position:absolute;top:46px;right:6px;z-index:20;min-width:230px;background:#2a2a2f;border:1px solid #3a3a40;border-radius:14px;box-shadow:0 14px 40px #000c;overflow:hidden;animation:vmin .15s ease}
+@keyframes vmin{from{opacity:0;transform:translateY(-4px) scale(.98)}to{opacity:1;transform:none}}
+.vmenu button{display:flex;width:100%;align-items:center;justify-content:space-between;gap:14px;border:0;background:none;color:#fff;font-family:var(--body);font-size:16px;font-weight:600;padding:12px 16px;text-align:left;border-bottom:1px solid #ffffff10}
+.vmenu button:last-child{border-bottom:0}
+.vmenu button i{font-style:normal;color:#ccc;width:20px;text-align:center}
+.vmenu button.del,.vmenu button.del i{color:#ff5c5c}
+@media (hover:hover){.vmenu button:hover{background:#ffffff0d}}
+.item.vm .nm.editing{white-space:normal;outline:2px solid #5AA9FF;border-radius:6px;padding:0 4px;cursor:text;color:#fff}

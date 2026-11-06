@@ -260,7 +260,9 @@ function renderCats() {
 $('libq').addEventListener('input', () => renderLib());
 function textOf(t) { if (t._text == null) t._text = norm(t.words.map(w => w.text).join(' ')); return t._text; }
 // ---------- Voice Memos style: tap a memo to open a small player right in the list ----------
-let libFold = false;
+let libFold = false, foldT = 0;
+// once a memo is playing, its box folds down to a slim row with a progress line (tap the row to open it again)
+audio.addEventListener('play', () => { clearTimeout(foldT); foldT = setTimeout(() => { if (!audio.paused && !libFold && document.querySelector('#lib .vexp')) { libFold = true; renderLib(); } }, 1500); });
 const IC = {
   wave: '<svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><rect x="3" y="10" width="2" height="4" rx="1"/><rect x="7" y="7" width="2" height="10" rx="1"/><rect x="11" y="4" width="2" height="16" rx="1"/><rect x="15" y="8" width="2" height="8" rx="1"/><rect x="19" y="10.5" width="2" height="3" rx="1"/></svg>',
   back: '<svg viewBox="0 0 52 52" width="30" height="30" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round"><path d="M26 9a17 17 0 1 1-15.6 10.2"/><path d="M26 3v12l-8-6z" fill="currentColor" stroke="none"/><text x="26" y="33" font-size="15" font-weight="800" text-anchor="middle" fill="currentColor" stroke="none" font-family="Poppins">15</text></svg>',
@@ -287,6 +289,7 @@ function libRowPlayer(t) {
   return x;
 }
 function updateLibRow() {
+  const th = document.querySelector('#lib .vthin i'); if (th && cur) th.style.width = clamp((audio.currentTime || 0) / (dur() || 1), 0, 1) * 100 + '%';
   const x = document.querySelector('#lib .vexp'); if (!x || !cur) return;
   const t = audio.currentTime || 0, D = dur() || 1, pc = clamp(t / D, 0, 1) * 100 + '%';
   x.querySelector('.vbar i').style.width = pc; x.querySelector('.vbar b').style.left = pc;
@@ -325,6 +328,7 @@ function renderLib() {
       if (isOwn(t)) { const x = document.createElement('button'); x.className = 'idel'; x.title = 'Delete'; x.setAttribute('aria-label', 'Delete ' + t.title); x.innerHTML = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>'; x.onclick = e => { e.stopPropagation(); deleteTrack(t); }; acts.appendChild(x); }
       d.appendChild(acts);
       if (t === cur && !libFold) d.appendChild(libRowPlayer(t));
+      else if (t === cur) { const th = document.createElement('div'); th.className = 'vthin'; th.innerHTML = '<i></i>'; d.appendChild(th); }
       L.appendChild(d);
     });
   };

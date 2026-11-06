@@ -1455,6 +1455,12 @@ addEventListener('keydown', e => {
   if (mode === 'tx') setMode('wave');
 });
 
+// the style switch and full screen button fade away while playing; touch or move over the view to bring them back
+let vzT = 0;
+function vzPoke() { const w = $('waveWrap'); w.classList.remove('idle'); clearTimeout(vzT); vzT = setTimeout(() => { if (!audio.paused) w.classList.add('idle'); }, 2500); }
+['pointermove', 'pointerdown'].forEach(ev => $('view').addEventListener(ev, vzPoke, { passive: true }));
+audio.addEventListener('play', vzPoke); audio.addEventListener('pause', () => { clearTimeout(vzT); $('waveWrap').classList.remove('idle'); });
+
 // ---------- full screen visualiser controls ----------
 $('vizFs').onclick = e => { e.stopPropagation(); openVizFull(); };
 $('vfClose').onclick = e => { e.stopPropagation(); closeVizFull(); };

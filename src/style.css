@@ -492,3 +492,6 @@ body.resizing{cursor:col-resize;user-select:none}
 .vb.vwave,.vb.vbin{color:#5AA9FF}
 .vb.vplay{width:48px;height:48px}
 @media (hover:hover){.vb:hover{background:#ffffff12}}
+
+.vizsw,.vizfs{transition:opacity .4s}
+#waveWrap.idle .vizsw,#waveWrap.idle .vizfs{opacity:0;pointer-events:none}

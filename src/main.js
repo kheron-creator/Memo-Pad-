@@ -279,7 +279,7 @@ function renderLib() {
     list.forEach(t => {
       const d = document.createElement('div'); d.className = 'item vm' + (t === cur ? ' on' : '') + (t === cur && !audio.paused ? ' playing' : '');
       const tags = [t.category ? `<span class="cat">${esc(t.category)}</span>` : '', isOwn(t) && t.is_public ? '<span class="sh">public</span>' : '', offline.has(t.id) ? '<span class="sh">offline</span>' : '', txing === t ? '<span class="sh">transcribing…</span>' : txQueue.includes(t) ? '<span class="sh">waiting</span>' : ''].join('');
-      d.innerHTML = `<div class="vmain"><div class="nm">${esc(t.title)}</div><div class="mt"><span>${when(t.added)}</span>${t.words.length ? txIcon : ''}${tags}</div></div><div class="vdur">${short(t.duration)}</div>`;
+      d.innerHTML = `<div class="vmain"><div class="nm">${esc(t.title)}</div><div class="mt"><span>${when(t.added)}</span>${stats.plays && stats.plays[t.id] ? `<span class="plays" title="Times played">▶ ${stats.plays[t.id]}</span>` : ''}${t.words.length ? txIcon : ''}${tags}</div></div><div class="vdur">${short(t.duration)}</div>`;
       d.onclick = () => { stopPlaylist(); select(t); closeLib(); };
       const acts = document.createElement('div'); acts.className = 'vacts';
       { const a = document.createElement('button'); a.className = 'idel iadd'; a.title = 'Add to a playlist'; a.setAttribute('aria-label', 'Add ' + t.title + ' to a playlist'); a.textContent = '+'; a.onclick = e => { e.stopPropagation(); openAddPl({ m: t.id, label: t.title }); }; acts.appendChild(a); }
@@ -298,7 +298,7 @@ function showEmpty() { cur = null; $('emptycard').style.display = 'flex'; setSrc
 function setSrc(u) { if (srcUrl && srcUrl.startsWith('blob:')) URL.revokeObjectURL(srcUrl); srcUrl = u; if (u) audio.src = u; else audio.removeAttribute('src'); }
 
 async function select(t) {
-  if (cur === t) return; savePos(true); cur = t; audio.pause(); setSrc(null); stopRep();
+  if (cur === t) return; savePos(true); cur = t; playCounted = null; playSecs = 0; audio.pause(); setSrc(null); stopRep();
   const own = isOwn(t);
   document.body.classList.toggle('readonly', !own);
   $('ttl').contentEditable = own ? 'true' : 'false';
@@ -1195,11 +1195,14 @@ function renderFavs(L, q) {
 const dayOf = (d = new Date()) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/London' }).format(d);
 let stats = { days: {}, tracks: {} }, statSaved = 0, lastTick = 0, lastPos = -1, heard = {};
 const statKey = () => 'mp.stats.' + (user ? user.id : 'x');
-function loadStats() { try { stats = JSON.parse(localStorage.getItem(statKey())) || stats; } catch {} stats.days ||= {}; stats.tracks ||= {}; statLine(); }
+function loadStats() { try { stats = JSON.parse(localStorage.getItem(statKey())) || stats; } catch {} stats.days ||= {}; stats.tracks ||= {}; stats.plays ||= {}; statLine(); }
+let playCounted = null, playSecs = 0;
 function tickStats(t) {
   const now = performance.now(), dt = (now - lastTick) / 1000; lastTick = now;
   if (!cur || audio.paused || dt <= 0 || dt > 2) { lastPos = t; return; }
   const day = dayOf(); stats.days[day] = (stats.days[day] || 0) + dt; stats.tracks[cur.id] = (stats.tracks[cur.id] || 0) + dt;
+  // a "play" counts once you've listened 30 seconds since opening the memo
+  if (playCounted !== cur.id) { playSecs += dt; if (playSecs >= Math.min(30, (cur.duration || 60) * 0.5)) { playCounted = cur.id; stats.plays[cur.id] = (stats.plays[cur.id] || 0) + 1; localStorage.setItem(statKey(), JSON.stringify(stats)); renderLib(); } }
   // a "finished listen": you heard most of the track (skips and seeks don't count)
   const d = t - lastPos; lastPos = t;
   if (d > 0 && d < 2) { heard[cur.id] = (heard[cur.id] || 0) + d; if (cur.duration && heard[cur.id] >= cur.duration * 0.85) { heard[cur.id] = -1e9; finishedTrack(cur); } }

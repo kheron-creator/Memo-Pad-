@@ -46,6 +46,16 @@ const isOwn = t => !!(t && user && t.user_id === user.id);
 const norm = s => (s || '').toLowerCase().replace(/[^\p{L}\p{N}' ]/gu, '');
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const newAC = () => new (window.AudioContext || window.webkitAudioContext)();
+// decode straight to a lower sample rate: far less memory for long recordings on phones
+async function decodeAt(blob, sr) {
+  const O = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+  if (!O) return decode(blob);
+  try { return await new O(1, 1, sr).decodeAudioData(await blob.arrayBuffer()); } catch { return decode(blob); }
+}
+function fileDuration(f) {
+  return new Promise(res => { const a = document.createElement('audio'), u = URL.createObjectURL(f); let done = false; const fin = v => { if (done) return; done = true; URL.revokeObjectURL(u); res(v); };
+    a.preload = 'metadata'; a.onloadedmetadata = () => fin(isFinite(a.duration) ? a.duration : 0); a.onerror = () => fin(0); setTimeout(() => fin(0), 8000); a.src = u; });
+}
 async function decode(blob) { const ac = newAC(); try { return await ac.decodeAudioData(await blob.arrayBuffer()); } finally { ac.close && ac.close(); } }
 
 // ---------- saving (Supabase is the source of truth, IndexedDB is the offline cache) ----------
@@ -189,16 +199,19 @@ async function addFile(f, preCompressed) {
   uploading(true);
   try {
     status(`Reading ${f.name}…`); prog(3);
+    const d0 = preCompressed ? 0 : await fileDuration(f), p = settingsFor('standard', d0, 49);
+    if (lowPower && d0 > 1800) p.sr = Math.min(p.sr, 22050); // long recordings on a phone: keep memory low
     let ab;
-    try { ab = await decode(f); } catch (err) { throw new Error(`could not read the audio in ${f.name}`); }
+    try { ab = preCompressed ? await decodeAt(f, 8000) : await decodeAt(f, p.sr); }
+    catch (err) { throw new Error(before > 60 * MB ? `${f.name} is too long for this device to read in one go. Try adding it on a computer, or split it into parts under about 60 minutes` : `could not read the audio in ${f.name}`); }
     let out = f;
     if (!preCompressed) {
       status(`Compressing ${mb(before)}…`);
-      const p = settingsFor('standard', ab.duration, 49);
+      if (!d0) Object.assign(p, settingsFor('standard', ab.duration, 49), lowPower && ab.duration > 1800 ? { sr: Math.min(p.sr, 22050) } : {});
       const blob = await compress(ab, p, { trim: $('cvTrim').checked, norm: $('cvNorm').checked, fmt: 'mp3' }, x => { prog(5 + 70 * x); status(`Compressing ${mb(before)}… ${Math.round(x * 100)}%`); });
       out = new File([blob], base + '.mp3', { type: 'audio/mpeg' });
       if (out.size >= before && /mpeg|mp3/.test(f.type + f.name)) { out = f; }
-      else ab = await decode(out);
+      else { ab = null; ab = await decodeAt(out, 8000); } // only needed for the waveform and length
     }
     if (out.size > MAX_FILE) throw new Error(`it is still ${mb(out.size)} after compressing. The free plan allows up to 50 MB per file. Try the Voice memo preset or "Fit under a size" in Convert or compress`);
     if (storageUsed && storageUsed + out.size > FREE_STORAGE) throw new Error('MemoPad storage is full (1 GB). Delete some memos first');

@@ -311,7 +311,7 @@ function renderLib() {
   const section = (title, list) => {
     if (!list.length) return; if (title) { const h = document.createElement('h4'); h.textContent = title; L.appendChild(h); }
     list.forEach(t => {
-      const d = document.createElement('div'); d.className = 'item vm' + (t === cur ? ' on' : '') + (t === cur && !audio.paused ? ' playing' : '');
+      const d = document.createElement('div'); d._t = t; d.className = 'item vm' + (t === cur ? ' on' : '') + (t === cur && !audio.paused ? ' playing' : '');
       const tags = [t.category ? `<span class="cat">${esc(t.category)}</span>` : '', isOwn(t) && t.is_public ? '<span class="sh">public</span>' : '', offline.has(t.id) ? '<span class="sh">offline</span>' : '', txing === t ? '<span class="sh">transcribing…</span>' : txQueue.includes(t) ? '<span class="sh">waiting</span>' : ''].join('');
       d.innerHTML = `<div class="vmain"><div class="nm">${esc(t.title)}</div><div class="mt"><span>${when(t.added)}</span>${stats.plays && stats.plays[t.id] ? `<span class="plays" title="Times played">▶ ${stats.plays[t.id]}</span>` : ''}${t.words.length ? txIcon : ''}${tags}</div></div><div class="vdur">${short(t.duration)}</div>`;
       // tap the title to play straight away; tap anywhere else on the row to open it (tap again to fold)
@@ -377,7 +377,14 @@ function savePos(force) {
 }
 audio.addEventListener('timeupdate', () => savePos(false));
 audio.addEventListener('pause', () => savePos(true));
-audio.addEventListener('ended', () => { if (cur) localStorage.removeItem('mp.pos.' + cur.id); if (pl) nextInPlaylist(); });
+audio.addEventListener('ended', () => {
+  if (cur) localStorage.removeItem('mp.pos.' + cur.id);
+  if (pl) { nextInPlaylist(); return; }
+  if (sleep.chapter) return; // the sleep timer said stop here
+  // carry on with the next memo down your list
+  const order = [...document.querySelectorAll('#lib .item.vm')].map(el => el._t).filter(Boolean), i = order.indexOf(cur), n = order[i + 1];
+  if (n) { toast('Up next: ' + n.title, false, 2500); select(n).then(() => audio.play().catch(() => {})); }
+});
 addEventListener('pagehide', () => savePos(true));
 
 // sleep timer: fades out gently, then pauses

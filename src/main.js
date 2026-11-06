@@ -295,14 +295,14 @@ function updateLibRow() {
 
 // the memo you played most recently sits at the top of the list
 const recentKey = () => 'mp.recent.' + (user ? user.id : 'x');
-let _recent = null;
+let _recent = null, recentSnap = null; // the list order only changes when you pick another memo, so the one playing stays put
 function recentMap() { if (!_recent) { try { _recent = JSON.parse(localStorage.getItem(recentKey())) || {}; } catch { _recent = {}; } } return _recent; }
 function markRecent(t) { if (!t) return; const R = recentMap(); R[t.id] = Date.now(); try { localStorage.setItem(recentKey(), JSON.stringify(R)); } catch {} }
 function renderLib() {
   const L = $('lib'); L.innerHTML = '';
   const q = norm($('libq').value.trim());
   const ok = t => (!catFilter || t.category === catFilter) && (!q || norm(t.title).includes(q) || textOf(t).includes(q));
-  const R = recentMap(), byRecent = (a, b) => (R[b.id] || 0) - (R[a.id] || 0);
+  const R = recentSnap || (recentSnap = { ...recentMap() }), byRecent = (a, b) => (R[b.id] || 0) - (R[a.id] || 0);
   const mine = tracks.filter(t => isOwn(t) && ok(t)).sort(byRecent), shared = tracks.filter(t => !isOwn(t) && ok(t)).sort(byRecent);
   const when = ms => { const d = new Date(ms), now = new Date(), day = 864e5, d0 = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
     if (ms >= d0) return `${pad(d.getHours())}:${pad(d.getMinutes())}`; if (ms >= d0 - day) return 'Yesterday';
@@ -338,7 +338,7 @@ function showEmpty() { cur = null; $('emptycard').style.display = 'flex'; setSrc
 function setSrc(u) { if (srcUrl && srcUrl.startsWith('blob:')) URL.revokeObjectURL(srcUrl); srcUrl = u; if (u) audio.src = u; else audio.removeAttribute('src'); }
 
 async function select(t) {
-  if (cur === t) return; savePos(true); cur = t; playCounted = null; playSecs = 0; audio.pause(); setSrc(null); stopRep();
+  if (cur === t) return; savePos(true); recentSnap = { ...recentMap() }; cur = t; playCounted = null; playSecs = 0; audio.pause(); setSrc(null); stopRep();
   const own = isOwn(t);
   document.body.classList.toggle('readonly', !own);
   $('ttl').contentEditable = own ? 'true' : 'false';

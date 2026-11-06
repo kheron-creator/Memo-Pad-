@@ -330,11 +330,10 @@ function renderLib() {
       const d = document.createElement('div'); d._t = t; d.className = 'item vm' + (t === cur ? ' on' : '') + (t === cur && !audio.paused ? ' playing' : '');
       const tags = [t.category ? `<span class="cat">${esc(t.category)}</span>` : '', isOwn(t) && t.is_public ? '<span class="sh">public</span>' : '', offline.has(t.id) ? '<span class="sh">offline</span>' : '', txing === t ? '<span class="sh">transcribing…</span>' : txQueue.includes(t) ? '<span class="sh">waiting</span>' : ''].join('');
       d.innerHTML = `<div class="vmain"><div class="nm">${esc(t.title)}</div><div class="mt"><span>${when(t.added)}</span>${stats.plays && stats.plays[t.id] ? `<span class="plays" title="Times played">▶ ${stats.plays[t.id]}</span>` : ''}${t.words.length ? txIcon : ''}${tags}</div></div><div class="vdur">${short(t.duration)}</div>`;
-      // tap the title to play straight away; tap anywhere else on the row to open it (tap again to fold)
       d.onclick = e => {
-        const onTitle = !!e.target.closest('.nm');
-        if (t === cur) { if (onTitle) { libFold = false; togglePlay(); } else libFold = !libFold; renderLib(); return; }
-        stopPlaylist(); libFold = false; const p = select(t); if (onTitle) p.then(() => audio.play().catch(() => {})); renderLib();
+        // like iPhone Voice Memos: tap opens the memo (press play yourself); tap the open one to fold it
+        if (t === cur) { libFold = !libFold; renderLib(); return; }
+        stopPlaylist(); libFold = false; select(t); renderLib();
       };
       const acts = document.createElement('div'); acts.className = 'vacts';
       { const a = document.createElement('button'); a.className = 'idel iadd'; a.title = 'Add to a playlist'; a.setAttribute('aria-label', 'Add ' + t.title + ' to a playlist'); a.textContent = '+'; a.onclick = e => { e.stopPropagation(); openAddPl({ m: t.id, label: t.title }); }; acts.appendChild(a); }

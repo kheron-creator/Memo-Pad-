@@ -484,14 +484,35 @@ function nextChapter() { if (!cur) return; const k = chapterAt(audio.currentTime
 // one press = next/previous affirmation; two quick presses = next/previous chapter
 function prevAff() { const t = audio.currentTime, [j] = sentenceAt(Math.max(0, activeWord(t))); const [pj] = t - sentStart(j) > 1.5 ? [j] : sentenceAt(Math.max(0, j - 1)); audio.currentTime = sentStart(pj); }
 function nextAff() { const [, e] = sentenceAt(Math.max(0, activeWord(audio.currentTime))); if (e + 1 < cur.words.length) audio.currentTime = sentStart(sentenceAt(e + 1)[0]); }
-let skipMem = { at: 0, dir: 0, t: 0 };
+// presses in a row: 1 = affirmation, 2 = chapter, 3 = memo (hold the button on screen to change memo too)
+let skipMem = { at: 0, dir: 0, t: 0, n: 0 };
+async function skipMemo(dir) {
+  if (pl) { if (dir > 0) nextInPlaylist(); else { pl.i = Math.max(0, pl.i - 1); playItem(); } return; }
+  const list = [...tracks.filter(t => isOwn(t)), ...tracks.filter(t => !isOwn(t))]; if (!list.length) return;
+  const i = list.indexOf(cur), t = list[(i + dir + list.length) % list.length]; if (!t || t === cur) return;
+  await select(t); audio.play().catch(() => {}); toast((dir > 0 ? 'Next memo: ' : 'Previous memo: ') + t.title, false, 1800);
+}
 function skip(dir) {
   if (!cur) return; const n = Date.now();
-  if (!cur.words.length) { dir > 0 ? nextChapter() : prevChapter(); return; }
-  if (n - skipMem.at < 500 && skipMem.dir === dir) { audio.currentTime = skipMem.t; skipMem.at = 0; dir > 0 ? nextChapter() : prevChapter(); toast(dir > 0 ? 'Next chapter' : 'Previous chapter', false, 1200); return; }
-  skipMem = { at: n, dir, t: audio.currentTime }; dir > 0 ? nextAff() : prevAff();
+  const steps = cur.words.length ? ['aff', 'ch', 'memo'] : (cur.chapters.length > 1 ? ['ch', 'memo'] : ['memo']);
+  const chain = n - skipMem.at < 550 && skipMem.dir === dir ? skipMem.n + 1 : 0;
+  if (chain === 0) skipMem.t = audio.currentTime;
+  skipMem.at = n; skipMem.dir = dir; skipMem.n = chain;
+  const step = steps[Math.min(chain, steps.length - 1)];
+  if (chain && step === steps[chain - 1]) return; // already at the last level
+  if (step === 'memo') { skipMem.at = 0; skipMemo(dir); return; }
+  if (chain) audio.currentTime = skipMem.t;
+  if (step === 'ch') { dir > 0 ? nextChapter() : prevChapter(); if (chain) toast(dir > 0 ? 'Next chapter (press again for next memo)' : 'Previous chapter (press again for previous memo)', false, 1400); }
+  else dir > 0 ? nextAff() : prevAff();
 }
-$('prevCh').onclick = () => skip(-1); $('nextCh').onclick = () => skip(1);
+function holdable(el, dir) {
+  let t = 0, held = false;
+  el.addEventListener('pointerdown', () => { held = false; t = setTimeout(() => { held = true; skipMemo(dir); }, 600); });
+  ['pointerup', 'pointerleave', 'pointercancel'].forEach(e => el.addEventListener(e, () => clearTimeout(t)));
+  el.addEventListener('click', e => { e.stopPropagation(); if (held) { held = false; return; } skip(dir); if (typeof rPoke === 'function' && !$('reader').hidden) rPoke(); });
+  el.addEventListener('contextmenu', e => e.preventDefault());
+}
+holdable($('prevCh'), -1); holdable($('nextCh'), 1);
 $('chapnow').onclick = () => { const el = document.querySelector('.chaps'); if (innerWidth <= 820) el.scrollIntoView({ behavior: 'smooth' }); };
 // lock screen and headphone controls (iPhone shows the chapter as the track name)
 const ms = navigator.mediaSession;
@@ -1103,8 +1124,7 @@ function tickReader(t) {
   $('rText').querySelectorAll('.rw').forEach(s => { const i = +s.dataset.i; s.classList.toggle('past', i < a); s.classList.toggle('now', i === a); });
 }
 $('rPlay').onclick = togglePlay;
-$('rPrev').onclick = e => { e.stopPropagation(); skip(-1); rPoke(); };
-$('rNext').onclick = e => { e.stopPropagation(); skip(1); rPoke(); };
+holdable($('rPrev'), -1); holdable($('rNext'), 1);
 addEventListener('keydown', e => { if (e.key === 'Escape' && !$('reader').hidden) closeReader(); });
 
 

@@ -14,13 +14,16 @@
 </head>
 <body>
 <main class="cp">
-  <header><a href="/"><img src="/logo.png" alt="Progress Today" class="cplogo"></a></header>
+  <header class="top">
+    <a href="/" class="brand"><img src="/favicon-64.png" alt=""><span><b>MemoPad</b><i>Did you get the message?</i></span></a>
+    <nav class="tabs"><a href="/create.html">Create</a><a href="/mix.html" class="on">Play over music</a></nav>
+  </header>
   <h1>Play over music</h1>
-  <p class="sub">Your affirmations on top, your favourite song underneath. <span class="pilot">Pilot</span></p>
+  <p class="sub">Your affirmations on top, your favourite beat underneath. <span class="pilot">Pilot</span></p>
 
   <section class="step">
     <h2><b>1</b> Affirmations</h2>
-    <div class="seg" id="aMode">
+    <div class="chips" id="aMode">
       <button data-a="memo" class="on">From my MemoPad</button>
       <button data-a="file">A file on this device</button>
     </div>
@@ -30,14 +33,14 @@
 
   <section class="step">
     <h2><b>2</b> Music</h2>
-    <div class="seg" id="mMode">
+    <div class="chips" id="mMode">
       <button data-m="yt" class="on">YouTube</button>
       <button data-m="file">A file on this device</button>
     </div>
-    <div class="seg chips" data-mp="yt" id="presets">
-      <button data-yt="https://www.youtube.com/watch?v=jfKfPfyJRdk">Lofi hip hop</button>
-      <button data-yt="https://www.youtube.com/watch?v=5yx6BWlEVcY">Chillhop</button>
-      <button data-yt="https://www.youtube.com/watch?v=4xDzrJKXOOY">Synthwave</button>
+    <div class="moods" data-mp="yt" id="presets">
+      <button class="m-lofi" data-yt="https://www.youtube.com/watch?v=jfKfPfyJRdk"><b>Lofi hip hop</b><small>beats to relax</small></button>
+      <button class="m-chill" data-yt="https://www.youtube.com/watch?v=5yx6BWlEVcY"><b>Chillhop</b><small>warm and jazzy</small></button>
+      <button class="m-synth" data-yt="https://www.youtube.com/watch?v=4xDzrJKXOOY"><b>Synthwave</b><small>dreamy, retro</small></button>
     </div>
     <div class="row" data-mp="yt"><input id="yt" type="text" placeholder="Paste a YouTube link (song or playlist)" autocomplete="off"><button id="ytLoad" class="ghost">Load</button></div>
     <div class="row" data-mp="file" hidden><input id="mFile" type="file" accept="audio/*"></div>
@@ -46,13 +49,13 @@
 
   <section class="step">
     <h2><b>3</b> Balance</h2>
-    <label class="vol">Affirmations <input id="aVol" type="range" min="0" max="200" value="100"></label>
-    <label class="vol">Music <input id="mVol" type="range" min="0" max="100" value="30"></label>
+    <label class="vol big"><span>Affirmations</span> <input id="aVol" type="range" min="0" max="200" value="100"></label>
+    <label class="vol big"><span>Music</span> <input id="mVol" type="range" min="0" max="100" value="30"></label>
     <div class="row opts">
       <label><input type="checkbox" id="loopM" checked> Loop the music</label>
       <label><input type="checkbox" id="loopA"> Loop the affirmations</label>
     </div>
-    <button id="play" class="go">Play both</button>
+    <button id="play" class="go">PLAY BOTH</button>
     <div class="row prog"><span id="tNow">0:00</span><input id="seek" type="range" min="0" max="1000" value="0"><span id="tDur">0:00</span></div>
     <p class="hint" id="msg"></p>
   </section>

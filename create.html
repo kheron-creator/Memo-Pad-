@@ -14,52 +14,27 @@
 </head>
 <body>
 <main class="cp">
-  <header><a href="/"><img src="/logo.png" alt="Progress Today" class="cplogo"></a></header>
-  <h1>Create an affirmation track</h1>
-  <p class="sub">Words, voice, music. Everything is made on this device, free. <span class="pilot">Pilot</span></p>
+  <header class="top">
+    <a href="/" class="brand"><img src="/favicon-64.png" alt=""><span><b>MemoPad</b><i>Did you get the message?</i></span></a>
+    <nav class="tabs"><a href="/create.html" class="on">Create</a><a href="/mix.html">Play over music</a></nav>
+  </header>
+  <h1>Create your affirmations</h1>
+  <p class="sub">Choose a voice, write your words, add a beat. <span class="pilot">Pilot</span></p>
 
   <section class="step">
-    <h2><b>1</b> Words</h2>
-    <div class="row">
-      <select id="pillar" aria-label="Life area">
-        <option>Mentally</option><option>Emotionally</option><option selected>Professionally</option>
-        <option>Physically</option><option>Socially</option><option>Romantically</option>
-      </select>
-      <input id="goal" type="text" placeholder="What do you want? e.g. speak up with confidence" autocomplete="off">
-      <button id="write" class="ghost">Write for me</button>
-    </div>
-    <textarea id="text" rows="9" spellcheck="true" placeholder="One affirmation per line. Write your own, or tap Write for me."></textarea>
-    <p class="hint" id="count"></p>
-  </section>
-
-  <section class="step">
-    <h2><b>2</b> Voice</h2>
-    <div class="seg" id="vMode">
-      <button data-v="ai" class="on">AI voice</button>
-      <button data-v="rec">Record my voice</button>
-      <button data-v="file">Upload a recording</button>
+    <h2><b>1</b> Voice</h2>
+    <div class="chips" id="vMode">
+      <button data-v="ai" class="on">AI voices</button>
+      <button data-v="rec">Record</button>
+      <button data-v="file">Upload</button>
     </div>
     <div class="vp" data-p="ai">
-      <div class="row">
-        <select id="voice" aria-label="Voice">
-          <optgroup label="ElevenLabs · most natural (sign in)">
-            <option value="el:JBFqnCBsd6RMkjVDRZzb">George · British, warm, male</option>
-            <option value="el:Xb7hH8MSUJpSbSDYk0k2">Alice · British, clear, female</option>
-            <option value="el:EXAVITQu4vr4xnSDxMaL">Sarah · US, reassuring, female</option>
-            <option value="el:nPczCjzI2devNBz1zQrb">Brian · US, deep, comforting, male</option>
-            <option value="el:SAz9YHcvj6GT2YYXdXww">River · US, calm, neutral</option>
-            <option value="el:bIHbv24MWmeRgasZH58o">Will · US, relaxed, male</option>
-          </optgroup>
-          <optgroup label="Free voices · run on this device">
-          <option value="en_GB-cori-high">Cori · British, female</option>
-          <option value="en_GB-alba-medium">Alba · Scottish, female</option>
-          <option value="en_GB-northern_english_male-medium">Northern English, male</option>
-          <option value="en_US-hfc_female-medium">US, female</option>
-          <option value="en_US-ryan-high">Ryan · US, male</option>
-          </optgroup>
-        </select>
-        <button id="hear" class="ghost">Hear a sample</button>
+      <div class="chips small" id="vFilter">
+        <button data-f="all" class="on">All</button><button data-f="el">Natural</button><button data-f="free">Free</button>
+        <button data-f="british">British</button><button data-f="american">American</button><button data-f="female">Female</button><button data-f="male">Male</button>
       </div>
+      <div class="vgrid" id="vGrid"></div>
+      <select id="voice" hidden aria-hidden="true"></select>
       <p class="hint" id="voiceHint"></p>
     </div>
     <div class="vp" data-p="rec" hidden>
@@ -67,6 +42,23 @@
     </div>
     <div class="vp" data-p="file" hidden>
       <div class="row"><input id="voiceFile" type="file" accept="audio/*"><span class="hint" id="voiceFileInfo"></span></div>
+    </div>
+  </section>
+
+  <section class="step">
+    <h2><b>2</b> Words</h2>
+    <div class="editor">
+      <button class="vpill" id="vPill" type="button"><i class="orb" id="vPillOrb"></i><span id="vPillName">George</span></button>
+      <textarea id="text" rows="8" spellcheck="true" placeholder="One affirmation per line. Write your own, or let MemoPad write some for you below."></textarea>
+      <p class="hint" id="count"></p>
+    </div>
+    <div class="row">
+      <select id="pillar" aria-label="Life area">
+        <option>Mentally</option><option>Emotionally</option><option selected>Professionally</option>
+        <option>Physically</option><option>Socially</option><option>Romantically</option>
+      </select>
+      <input id="goal" type="text" placeholder="What do you want? e.g. speak up with confidence" autocomplete="off">
+      <button id="write" class="ghost grad-text">✦ Write for me</button>
     </div>
     <div class="row opts" id="aiOpts">
       <label>Say each line <select id="rep"><option value="1">once</option><option value="2">twice</option><option value="3">3 times</option></select></label>
@@ -76,29 +68,31 @@
 
   <section class="step">
     <h2><b>3</b> Music</h2>
-    <div class="seg" id="mMode">
-      <button data-m="calm" class="on">Calm</button>
-      <button data-m="warm">Warm</button>
-      <button data-m="bright">Bright</button>
-      <button data-m="file">My instrumental</button>
-      <button data-m="none">None</button>
+    <div class="moods" id="mMode">
+      <button data-m="calm" class="on m-calm"><b>Calm</b><small>soft pads</small></button>
+      <button data-m="warm" class="m-warm"><b>Warm</b><small>gentle keys</small></button>
+      <button data-m="bright" class="m-bright"><b>Bright</b><small>uplifting</small></button>
+      <button data-m="file" class="m-file"><b>My beat</b><small>upload a file</small></button>
+      <button data-m="none" class="m-none"><b>None</b><small>voice only</small></button>
     </div>
     <div class="row" id="mFileRow" hidden><input id="musicFile" type="file" accept="audio/*"><span class="hint">Any track you have the rights to, e.g. one you made on Suno. It loops to fit.</span></div>
     <div class="row">
-      <label class="vol">Music volume <input id="mVol" type="range" min="0" max="100" value="35"></label>
-      <button id="mPrev" class="ghost">Preview music</button>
+      <label class="vol">Music <input id="mVol" type="range" min="0" max="100" value="35"></label>
+      <button id="mPrev" class="ghost">▶ Preview</button>
     </div>
+    <p class="hint">Want a YouTube lofi beat instead? Make your track, then tap <b>Play over a lofi beat</b>.</p>
   </section>
 
   <section class="step">
     <h2><b>4</b> Make it</h2>
     <input id="title" type="text" placeholder="Name your track" autocomplete="off">
-    <button id="make" class="go">Make my track</button>
+    <button id="make" class="go">MAKE MY TRACK</button>
     <div class="bar" id="bar" hidden><i></i></div>
     <p class="hint" id="msg"></p>
     <div id="out" hidden>
       <audio id="player" controls playsinline></audio>
-      <div class="row"><a id="dl" class="ghost btn" download>Download MP3</a><a id="toMix" href="/mix.html?local=1" class="ghost btn">Play over a lofi beat</a><a href="/" class="ghost btn">Open MemoPad to add it</a></div>
+      <div class="row"><a id="toMix" href="/mix.html?local=1" class="go small">Play over a lofi beat</a></div>
+      <div class="row"><a id="dl" class="ghost btn" download>Download MP3</a><a href="/" class="ghost btn">Open MemoPad</a></div>
     </div>
   </section>
   <footer><b>MemoPad</b> by Progress Today · Did you get the message?</footer>

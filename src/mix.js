@@ -81,7 +81,7 @@ $('loopM').onchange = () => (mus.loop = $('loopM').checked); mus.loop = true;
 $('loopA').onchange = () => (aud.loop = $('loopA').checked);
 
 /* ---------- play both ---------- */
-function setBtn() { $('play').textContent = playing ? 'Pause both' : 'Play both'; }
+function setBtn() { $('play').textContent = playing ? 'PAUSE BOTH' : 'PLAY BOTH'; }
 function stopAll() { playing = false; aud.pause(); mus.pause(); if (yt && ytReady) yt.pauseVideo(); setBtn(); }
 $('play').onclick = async () => {
   if (playing) return stopAll();

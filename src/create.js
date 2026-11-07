@@ -3,6 +3,7 @@
 // downloaded once from Hugging Face and kept in the browser's private storage. Music is generated here too.
 import './create.css';
 import { supabase, audioPut } from './cloud.js';
+import { VOICES, orb } from './voices.js';
 const $ = id => document.getElementById(id);
 const SR = 44100;
 let vMode = 'ai', mMode = 'calm', recBlob = null, voiceFileBlob = null, musicFileBuf = null, busy = false, outUrl = null;
@@ -58,7 +59,7 @@ async function speak(text, voiceId, onDl) {
 function seg(id, attr, on) {
   $(id).addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; [...$(id).children].forEach(x => x.classList.toggle('on', x === b)); on(b.dataset[attr]); });
 }
-seg('vMode', 'v', v => { vMode = v; document.querySelectorAll('.vp').forEach(p => (p.hidden = p.dataset.p !== v)); $('aiOpts').hidden = v !== 'ai'; });
+seg('vMode', 'v', v => { vMode = v; $('vPill').hidden = v !== 'ai'; document.querySelectorAll('.vp').forEach(p => (p.hidden = p.dataset.p !== v)); $('aiOpts').hidden = v !== 'ai'; });
 seg('mMode', 'm', m => { mMode = m; $('mFileRow').hidden = m !== 'file'; });
 
 let rec = null, recT0 = 0, recTimer = 0;
@@ -76,15 +77,42 @@ $('recBtn').onclick = async () => {
 $('voiceFile').onchange = e => { voiceFileBlob = e.target.files[0] || null; $('voiceFileInfo').textContent = voiceFileBlob ? 'Ready to mix.' : ''; };
 $('musicFile').onchange = async e => { const f = e.target.files[0]; musicFileBuf = null; if (f) try { musicFileBuf = await decode(f); } catch { msg('That music file could not be read. Try an MP3 or WAV.'); } };
 
-let sampleSrc = null;
-$('hear').onclick = async () => {
-  if (busy) return; busy = true; $('hear').disabled = true;
+/* ---------- voice picker ---------- */
+let sampleSrc = null, previewEl = null, playingCard = null;
+function stopSample() { sampleSrc?.stop(); sampleSrc = null; previewEl?.pause(); if (playingCard) playingCard.classList.remove('playing'); playingCard = null; }
+async function hearSample(v, card) {
+  const again = playingCard === card; stopSample(); if (again) return;
+  playingCard = card; card.classList.add('playing');
   try {
-    const buf = await speak('I am calm, clear and confident. I did get the message.', $('voice').value, p => msg(`Downloading the voice… ${Math.round(p * 100)}%`));
-    msg(''); sampleSrc?.stop(); sampleSrc = ac().createBufferSource(); sampleSrc.buffer = buf; sampleSrc.connect(ac().destination); await ac().resume(); sampleSrc.start();
-  } catch (err) { msg('The voice could not play: ' + (err.message || err) + '.'); }
-  busy = false; $('hear').disabled = false;
-};
+    if (v.preview) { previewEl = new Audio(v.preview); previewEl.onended = stopSample; await previewEl.play(); return; }
+    if (busy) return; busy = true;
+    const buf = await speak('I am calm, clear and confident. I did get the message.', v.id, p => msg(`Downloading the free voice… ${Math.round(p * 100)}%`));
+    msg(''); sampleSrc = ac().createBufferSource(); sampleSrc.buffer = buf; sampleSrc.connect(ac().destination); sampleSrc.onended = stopSample; await ac().resume(); sampleSrc.start();
+  } catch (err) { stopSample(); msg('The voice could not play: ' + (err.message || err) + '.'); }
+  finally { busy = false; }
+}
+let vFilter = 'all';
+function renderVoices() {
+  const g = $('vGrid'), cur = $('voice').value; g.innerHTML = '';
+  VOICES.filter(v => vFilter === 'all' || v.tags.includes(vFilter)).forEach(v => {
+    const c = document.createElement('div'); c.className = 'vcard' + (v.id === cur ? ' on' : ''); c.tabIndex = 0;
+    c.innerHTML = `<i class="orb"></i><span class="vn"><b>${v.name}</b><small>${v.desc}</small></span><button class="vplay" aria-label="Hear ${v.name}"><svg viewBox="0 0 24 24"><path class="ip" d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/><path class="ipa" d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg></button>`;
+    c.querySelector('.orb').style.background = orb(v);
+    c.onclick = e => { if (e.target.closest('.vplay')) return hearSample(v, c); pickVoice(v.id); };
+    c.onkeydown = e => { if (e.key === 'Enter') pickVoice(v.id); };
+    g.appendChild(c);
+  });
+}
+function pickVoice(id) {
+  $('voice').value = id; const v = VOICES.find(x => x.id === id);
+  $('vPillName').textContent = `${v.name} · ${v.desc}`; $('vPillOrb').style.background = orb(v);
+  $('voiceHint').textContent = id.startsWith('el:') ? 'Natural ElevenLabs voice. Sign in to MemoPad to use it. Each line is made once, then reused.' : 'Free voice. It downloads once (about 60 MB), then works offline.';
+  [...$('vGrid').children].forEach((c, i) => c.classList.toggle('on', c.querySelector('b').textContent === v.name));
+}
+$('voice').innerHTML = VOICES.map(v => `<option value="${v.id}">${v.name}</option>`).join('');
+$('vFilter').onclick = e => { const b = e.target.closest('button'); if (!b) return; [...$('vFilter').children].forEach(x => x.classList.toggle('on', x === b)); vFilter = b.dataset.f; renderVoices(); };
+$('vPill').onclick = () => { document.querySelector('[data-v=ai]').click(); $('vGrid').scrollIntoView({ behavior: 'smooth', block: 'center' }); };
+renderVoices(); pickVoice(VOICES[0].id);
 
 /* ---------- 3. Music (generated here, no samples, no rights issues) ---------- */
 const MOODS = {
@@ -134,12 +162,12 @@ function musicBus(ctx, dur) {
 }
 let prevSrc = null;
 $('mPrev').onclick = async () => {
-  if (prevSrc) { prevSrc.stop(); prevSrc = null; $('mPrev').textContent = 'Preview music'; return; }
+  if (prevSrc) { prevSrc.stop(); prevSrc = null; $('mPrev').textContent = '▶ Preview'; return; }
   if (mMode === 'none') return; if (mMode === 'file' && !musicFileBuf) return msg('Choose your instrumental first.');
   const ctx = new OfflineAudioContext(2, 20 * SR, SR); music(ctx, musicBus(ctx, 20), mMode, 20);
   const buf = await ctx.startRendering(); await ac().resume();
   prevSrc = ac().createBufferSource(); prevSrc.buffer = buf; prevSrc.connect(ac().destination); prevSrc.start();
-  $('mPrev').textContent = 'Stop preview'; prevSrc.onended = () => { prevSrc = null; $('mPrev').textContent = 'Preview music'; };
+  $('mPrev').textContent = '■ Stop'; prevSrc.onended = () => { prevSrc = null; $('mPrev').textContent = '▶ Preview'; };
 };
 
 /* ---------- 4. Mix and export ---------- */
@@ -194,5 +222,3 @@ $('write').onclick = writeForMe;
 $('text').oninput = updateCount; $('rep').onchange = updateCount; $('gap').onchange = updateCount;
 $('goal').onkeydown = e => { if (e.key === 'Enter') writeForMe(); };
 
-const voiceHint = () => ($('voiceHint').textContent = $('voice').value.startsWith('el:') ? 'Natural ElevenLabs voice. Sign in to MemoPad to use it. Each line is made once, then reused.' : 'Free voice. It downloads once (about 60 MB), then works offline.');
-$('voice').onchange = voiceHint; voiceHint();

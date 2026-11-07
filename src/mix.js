@@ -2,6 +2,7 @@
 // YouTube plays in its own official player (we only control play, pause and volume); nothing is downloaded or re-recorded.
 import './create.css';
 import { supabase, BUCKET, TABLE, audioGet } from './cloud.js';
+import { parseYt, loadYtApi, beatTiles } from './yt.js';
 const $ = id => document.getElementById(id);
 const aud = $('aud'), mus = $('mus'), q = new URLSearchParams(location.search);
 const msg = t => ($('msg').textContent = t);
@@ -49,17 +50,6 @@ $('memo').onchange = pickMemo;
 $('aFile').onchange = e => { const f = e.target.files[0]; if (!f) return; stopAll(); aud.src = URL.createObjectURL(f); msg('Ready. Add your music, then press Play both.'); };
 
 /* ---------- music ---------- */
-function parseYt(s) {
-  try {
-    const u = new URL(s.trim()); const list = u.searchParams.get('list');
-    let id = u.searchParams.get('v');
-    if (!id && /youtu\.be$/.test(u.hostname)) id = u.pathname.slice(1);
-    if (!id) { const m = u.pathname.match(/\/(?:shorts|embed|live)\/([\w-]{6,})/); if (m) id = m[1]; }
-    return id || list ? { id, list } : null;
-  } catch { return /^[\w-]{11}$/.test(s.trim()) ? { id: s.trim() } : null; }
-}
-let ytApi = null;
-const loadYtApi = () => (ytApi ||= new Promise((res, rej) => { window.onYouTubeIframeAPIReady = () => res(window.YT); const s = document.createElement('script'); s.src = 'https://www.youtube.com/iframe_api'; s.onerror = () => { ytApi = null; rej(); }; document.head.appendChild(s); setTimeout(() => { if (!window.YT?.Player) { ytApi = null; rej(); } }, 15000); }));
 $('ytLoad').onclick = async () => {
   const v = parseYt($('yt').value); if (!v) return msg('That does not look like a YouTube link.');
   msg('Loading YouTube…'); let YT; try { YT = await loadYtApi(); } catch { return msg('YouTube did not load. Check your connection, or use a music file instead.'); } $('ytBox').hidden = false; ytReady = false;
@@ -74,6 +64,7 @@ $('ytLoad').onclick = async () => {
     },
   });
 };
+$('presets').innerHTML = beatTiles();
 $('presets').onclick = e => { const b = e.target.closest('button'); if (!b) return; [...$('presets').children].forEach(x => x.classList.toggle('on', x === b)); $('yt').value = b.dataset.yt; $('ytLoad').click(); };
 $('yt').onkeydown = e => { if (e.key === 'Enter') $('ytLoad').click(); };
 $('mFile').onchange = e => { const f = e.target.files[0]; if (f) { mus.src = URL.createObjectURL(f); msg('Music ready. Press Play both.'); } };

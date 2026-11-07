@@ -2,8 +2,9 @@
 // Everything runs on this device. The AI voice is Piper (open source, MIT voices) running in the browser,
 // downloaded once from Hugging Face and kept in the browser's private storage. Music is generated here too.
 import './create.css';
-import { supabase, audioPut } from './cloud.js';
+import { audioPut } from './cloud.js';
 import { VOICES, orb } from './voices.js';
+import { speakBlob } from './tts.js';
 const $ = id => document.getElementById(id);
 const SR = 44100;
 let vMode = 'ai', mMode = 'calm', recBlob = null, voiceFileBlob = null, musicFileBuf = null, busy = false, outUrl = null;
@@ -35,26 +36,11 @@ function updateCount() {
 }
 
 /* ---------- 2. Voice ---------- */
-let tts = null; const ttsCache = new Map();
-const loadTts = () => (tts ||= import('@diffusionstudio/vits-web'));
+const ttsCache = new Map();
 async function decode(blob) { return ac().decodeAudioData(await blob.arrayBuffer()); }
-// ElevenLabs voices go through our own server function (api/tts.js) so the API key stays secret.
-async function speakEleven(text, voice) {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session) throw new Error('sign in to MemoPad first to use ElevenLabs voices');
-  const r = await fetch('/api/tts', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` }, body: JSON.stringify({ text, voice }) });
-  if (!r.ok) {
-    const e = await r.json().catch(() => ({}));
-    throw new Error({ not_configured: 'ElevenLabs is not switched on yet (the API key is missing)', sign_in: 'sign in to MemoPad first to use ElevenLabs voices', text: 'that line is too long, keep each line under 500 characters' }[e.error] || `ElevenLabs said no (${e.status || r.status})`);
-  }
-  return decode(await r.blob());
-}
 async function speak(text, voiceId, onDl) {
   const k = voiceId + '|' + text; if (ttsCache.has(k)) return ttsCache.get(k);
-  if (voiceId.startsWith('el:')) { const b = await speakEleven(text, voiceId.slice(3)); ttsCache.set(k, b); return b; }
-  const T = await loadTts();
-  const wav = await T.predict({ text, voiceId }, p => { if (p && p.total) onDl(p.loaded / p.total); });
-  const buf = await decode(wav); ttsCache.set(k, buf); return buf;
+  const b = await decode(await speakBlob(text, voiceId, onDl)); ttsCache.set(k, b); return b;
 }
 function seg(id, attr, on) {
   $(id).addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; [...$(id).children].forEach(x => x.classList.toggle('on', x === b)); on(b.dataset[attr]); });

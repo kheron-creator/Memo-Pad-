@@ -1,7 +1,7 @@
 // Play over music (pilot): an affirmation track on top of a YouTube song or a music file, each with its own volume.
 // YouTube plays in its own official player (we only control play, pause and volume); nothing is downloaded or re-recorded.
 import './create.css';
-import { supabase, BUCKET, TABLE } from './cloud.js';
+import { supabase, BUCKET, TABLE, audioGet } from './cloud.js';
 const $ = id => document.getElementById(id);
 const aud = $('aud'), mus = $('mus'), q = new URLSearchParams(location.search);
 const msg = t => ($('msg').textContent = t);
@@ -74,6 +74,7 @@ $('ytLoad').onclick = async () => {
     },
   });
 };
+$('presets').onclick = e => { const b = e.target.closest('button'); if (!b) return; [...$('presets').children].forEach(x => x.classList.toggle('on', x === b)); $('yt').value = b.dataset.yt; $('ytLoad').click(); };
 $('yt').onkeydown = e => { if (e.key === 'Enter') $('ytLoad').click(); };
 $('mFile').onchange = e => { const f = e.target.files[0]; if (f) { mus.src = URL.createObjectURL(f); msg('Music ready. Press Play both.'); } };
 $('loopM').onchange = () => (mus.loop = $('loopM').checked); mus.loop = true;
@@ -95,4 +96,11 @@ aud.ontimeupdate = () => { $('tNow').textContent = fmt(aud.currentTime); if (aud
 aud.onloadedmetadata = () => ($('tDur').textContent = fmt(aud.duration));
 $('seek').oninput = () => { if (aud.duration) aud.currentTime = aud.duration * $('seek').value / 1000; };
 
-loadMemos();
+// Coming from Create: use the track just made on this device.
+async function loadLocal() {
+  const b = await audioGet('_create_last'); if (!b) return false;
+  document.querySelector('[data-a=file]').click(); aud.src = URL.createObjectURL(b);
+  $('aFile').insertAdjacentHTML('afterend', '<span class="hint">Using the track you just made.</span>');
+  msg('Your new track is ready. Pick a beat, then press Play both.'); return true;
+}
+(q.get('local') ? loadLocal() : Promise.resolve()).then(loadMemos);

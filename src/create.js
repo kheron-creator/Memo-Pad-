@@ -2,6 +2,7 @@
 // Everything runs on this device. The AI voice is Piper (open source, MIT voices) running in the browser,
 // downloaded once from Hugging Face and kept in the browser's private storage. Music is generated here too.
 import './create.css';
+import { supabase, audioPut } from './cloud.js';
 const $ = id => document.getElementById(id);
 const SR = 44100;
 let vMode = 'ai', mMode = 'calm', recBlob = null, voiceFileBlob = null, musicFileBuf = null, busy = false, outUrl = null;
@@ -36,8 +37,20 @@ function updateCount() {
 let tts = null; const ttsCache = new Map();
 const loadTts = () => (tts ||= import('@diffusionstudio/vits-web'));
 async function decode(blob) { return ac().decodeAudioData(await blob.arrayBuffer()); }
+// ElevenLabs voices go through our own server function (api/tts.js) so the API key stays secret.
+async function speakEleven(text, voice) {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error('sign in to MemoPad first to use ElevenLabs voices');
+  const r = await fetch('/api/tts', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` }, body: JSON.stringify({ text, voice }) });
+  if (!r.ok) {
+    const e = await r.json().catch(() => ({}));
+    throw new Error({ not_configured: 'ElevenLabs is not switched on yet (the API key is missing)', sign_in: 'sign in to MemoPad first to use ElevenLabs voices', text: 'that line is too long, keep each line under 500 characters' }[e.error] || `ElevenLabs said no (${e.status || r.status})`);
+  }
+  return decode(await r.blob());
+}
 async function speak(text, voiceId, onDl) {
   const k = voiceId + '|' + text; if (ttsCache.has(k)) return ttsCache.get(k);
+  if (voiceId.startsWith('el:')) { const b = await speakEleven(text, voiceId.slice(3)); ttsCache.set(k, b); return b; }
   const T = await loadTts();
   const wav = await T.predict({ text, voiceId }, p => { if (p && p.total) onDl(p.loaded / p.total); });
   const buf = await decode(wav); ttsCache.set(k, buf); return buf;
@@ -69,7 +82,7 @@ $('hear').onclick = async () => {
   try {
     const buf = await speak('I am calm, clear and confident. I did get the message.', $('voice').value, p => msg(`Downloading the voice… ${Math.round(p * 100)}%`));
     msg(''); sampleSrc?.stop(); sampleSrc = ac().createBufferSource(); sampleSrc.buffer = buf; sampleSrc.connect(ac().destination); await ac().resume(); sampleSrc.start();
-  } catch (err) { msg('The AI voice could not load here: ' + (err.message || err) + '. Try Record my voice instead.'); }
+  } catch (err) { msg('The voice could not play: ' + (err.message || err) + '.'); }
   busy = false; $('hear').disabled = false;
 };
 
@@ -171,6 +184,7 @@ $('make').onclick = async () => {
     if (outUrl) URL.revokeObjectURL(outUrl); outUrl = URL.createObjectURL(mp3);
     const name = ($('title').value.trim() || 'My affirmations').replace(/[\\/:*?"<>|]+/g, '');
     $('player').src = outUrl; $('dl').href = outUrl; $('dl').download = name + '.mp3';
+    audioPut('_create_last', mp3);
     $('out').hidden = false; prog(1); msg(`Done: ${fmt(dur)}, ${(mp3.size / 1048576).toFixed(1)} MB. Download it, then add it in MemoPad to share it.`);
   } catch (err) { msg('Something went wrong: ' + (err.message || err)); }
   busy = false; $('make').disabled = false; setTimeout(() => ($('bar').hidden = true), 1200);
@@ -179,3 +193,6 @@ $('make').onclick = async () => {
 $('write').onclick = writeForMe;
 $('text').oninput = updateCount; $('rep').onchange = updateCount; $('gap').onchange = updateCount;
 $('goal').onkeydown = e => { if (e.key === 'Enter') writeForMe(); };
+
+const voiceHint = () => ($('voiceHint').textContent = $('voice').value.startsWith('el:') ? 'Natural ElevenLabs voice. Sign in to MemoPad to use it. Each line is made once, then reused.' : 'Free voice. It downloads once (about 60 MB), then works offline.');
+$('voice').onchange = voiceHint; voiceHint();

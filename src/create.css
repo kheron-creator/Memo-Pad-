@@ -33,3 +33,11 @@ input[type=file]{color:var(--mute);font:inherit;max-width:100%}
 #out audio{width:100%;margin:8px 0 10px}
 #recBtn.live{border-color:#ff2d55;color:#ff2d55}
 footer{color:var(--mute);text-align:center;font-size:14px;margin-top:30px}
+/* Play over music */
+.vol{margin:0 0 12px}
+.ytbox{position:relative;aspect-ratio:16/9;border-radius:12px;overflow:hidden;background:#000;margin:4px 0 10px}
+.ytbox iframe,.ytbox>div{position:absolute;inset:0;width:100%;height:100%;border:0}
+.prog{margin-top:12px;color:var(--mute);font-weight:700;font-size:14px}
+.prog input{flex:1;accent-color:#fff}
+.opts input[type=checkbox]{accent-color:#fff}
+footer a{color:var(--mute)}

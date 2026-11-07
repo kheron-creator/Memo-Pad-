@@ -1,5 +1,5 @@
 // YouTube helpers shared by Reader and Play over music. YouTube plays in its official embedded player.
-// Preset ids are well-known 24/7 lofi streams; if one has ended, the player shows an error and you can paste another link.
+// Preset ids checked with YouTube on 2026-11-07 (all exist and allow embedding). If one ever ends, the player shows an error and you can paste another link.
 export const BEATS = [
   { name: 'Lofi hip hop', sub: 'beats to relax/study', cls: 'm-lofi', url: 'https://www.youtube.com/watch?v=jfKfPfyJRdk' },
   { name: 'Sleepy lofi', sub: 'beats to sleep/chill', cls: 'm-calm', url: 'https://www.youtube.com/watch?v=28KRPhVzCus' },

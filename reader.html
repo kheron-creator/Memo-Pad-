@@ -46,18 +46,20 @@
     <h2><b>3</b> Beat</h2>
     <div class="moods" id="presets"></div>
     <div class="row"><input id="yt" type="text" placeholder="Or paste any YouTube link (song or playlist)" autocomplete="off"><button id="ytLoad" class="ghost">Load</button></div>
+    <div class="row"><button class="go small beatBtn" type="button">♪&nbsp;<span>Play beat</span></button><span class="hint">The beat and the voice each have their own play button.</span></div>
     <div class="ytbox" id="ytBox" hidden><div id="ytPlayer"></div></div>
   </section>
   <footer><b>MemoPad</b> by Progress Today · Did you get the message?</footer>
 </main>
 
 <div class="dock" id="dock">
-  <div class="now" id="now">Press play to start</div>
+  <div class="now" id="now">Press ▶ for the voice and ♪ for the beat</div>
   <div class="dctl">
     <button class="db" id="prev" aria-label="Previous"><svg viewBox="0 0 24 24"><path d="M6 5h2.5v14H6zM19 5.9v12.2a.8.8 0 0 1-1.2.7L9.6 12.7a.8.8 0 0 1 0-1.4l8.2-6.1a.8.8 0 0 1 1.2.7z"/></svg></button>
-    <button class="db big" id="play" aria-label="Play"><svg viewBox="0 0 24 24"><path class="ip" d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/><path class="ipa" d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg></button>
+    <button class="db big" id="play" aria-label="Play or pause the voice"><svg viewBox="0 0 24 24"><path class="ip" d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/><path class="ipa" d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg></button>
     <button class="db" id="next" aria-label="Next"><svg viewBox="0 0 24 24"><path d="M15.5 5H18v14h-2.5zM5 5.9v12.2a.8.8 0 0 0 1.2.7l8.2-6.1a.8.8 0 0 0 0-1.4L6.2 5.2A.8.8 0 0 0 5 5.9z"/></svg></button>
     <span class="pos" id="pos">0 / 0</span>
+    <button class="bb beatBtn" type="button" aria-label="Play or pause the beat">♪&nbsp;<span>Play beat</span></button>
     <button class="db" id="more" aria-label="Settings"><svg viewBox="0 0 24 24"><path d="M4 7h10v2H4zM17 6h3v4h-3zM4 15h3v2H4zM10 14h10v4H10z" opacity=".9"/></svg></button>
   </div>
   <div class="dset" id="dset" hidden>

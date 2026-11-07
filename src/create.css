@@ -134,7 +134,7 @@ body.rd .cp{padding-bottom:calc(150px + env(safe-area-inset-bottom))}
 .db.big{width:54px;height:54px;background:var(--grad)}
 .db.big svg{width:26px;height:26px}
 .db .ipa,body.playing .db .ip{display:none}body.playing .db .ipa{display:block}
-.pos{font-family:var(--head);font-weight:700;font-size:13px;color:var(--mute);margin-left:6px}
+.pos{white-space:nowrap;font-family:var(--head);font-weight:700;font-size:13px;color:var(--mute);margin-left:6px}
 #more{margin-left:auto}
 .dset{border-top:1px solid var(--line);margin-top:10px;padding-top:10px}
 .dset>label{display:flex;align-items:center;gap:10px;color:var(--mute);font-weight:700;font-size:14px;margin-bottom:8px}
@@ -144,3 +144,5 @@ body.rd .cp{padding-bottom:calc(150px + env(safe-area-inset-bottom))}
 .dset select{padding:6px 8px;font-size:14px}
 .signin{background:var(--card2);border-radius:16px;padding:10px 14px 2px;margin-top:6px}
 .signin input[type=password]{background:var(--bg);color:#fff;border:1px solid var(--line);border-radius:14px;padding:11px 14px;font:inherit;font-weight:600;flex:1;min-width:140px}
+.bb{border:0;border-radius:999px;height:42px;padding:0 14px;background:#2a2a30;color:#fff;font:600 14px Poppins,sans-serif;white-space:nowrap}
+body.beat .bb{background:var(--grad)}

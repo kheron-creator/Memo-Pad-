@@ -11,7 +11,7 @@ const $ = id => document.getElementById(id);
 const MAX = 1000, AHEAD = 3, LS = 'memopad-reader';
 const aud = $('aud');
 let voice = VOICES[0].id, items = [], spoken = [], cur = 0, playing = false, repLeft = 0, gapTimer = 0, docKey = '';
-let yt = null, ytReady = false;
+let yt = null, ytReady = false, beatOn = false, curV = null;
 
 /* ---------- saved state ---------- */
 const saved = (() => { try { return JSON.parse(localStorage.getItem(LS)) || {}; } catch { return {}; } })();
@@ -118,10 +118,9 @@ function unlock() {
 function play(fromHere) {
   if (!spoken.length) openReader(); if (!spoken.length) return;
   unlock(); playing = true; repLeft = +$('rep').value; setBtn();
-  if (yt && ytReady) { vol(); yt.playVideo(); } else if ($('yt').value && !yt) loadBeat(true);
   if (fromHere || !lastSrc || aud.ended || aud.src === SILENT) speakCurrent(); else aud.play().catch(() => speakCurrent());
 }
-function stop() { playing = false; token++; clearTimeout(gapTimer); aud.pause(); if (yt && ytReady) yt.pauseVideo(); setBtn(); }
+function stop() { playing = false; token++; clearTimeout(gapTimer); aud.pause(); setBtn(); }
 $('play').onclick = () => (playing ? stop() : play(false));
 $('prev').onclick = () => { if (!spoken.length) return; cur = Math.max(0, cur - 1); playing ? (repLeft = +$('rep').value, speakCurrent()) : show(); };
 $('next').onclick = () => { if (!spoken.length) return; cur = Math.min(spoken.length - 1, cur + 1); playing ? (repLeft = +$('rep').value, speakCurrent()) : show(); };
@@ -133,20 +132,29 @@ if ('mediaSession' in navigator) { navigator.mediaSession.setActionHandler('next
 
 /* ---------- beat (YouTube) ---------- */
 $('presets').innerHTML = beatTiles();
-$('presets').onclick = e => { const b = e.target.closest('button'); if (!b) return; [...$('presets').children].forEach(x => x.classList.toggle('on', x === b)); $('yt').value = b.dataset.yt; loadBeat(playing); };
+$('presets').onclick = e => { const b = e.target.closest('button'); if (!b) return; [...$('presets').children].forEach(x => x.classList.toggle('on', x === b)); $('yt').value = b.dataset.yt; loadBeat(true); };
 $('ytLoad').onclick = () => loadBeat(); $('yt').onkeydown = e => { if (e.key === 'Enter') loadBeat(); };
+// The beat has its own play button, separate from the voice.
+function beatUi(on) { beatOn = on; document.body.classList.toggle('beat', on); document.querySelectorAll('.beatBtn span').forEach(x => (x.textContent = on ? 'Pause beat' : 'Play beat')); }
+function beatToggle() {
+  if (beatOn && yt && ytReady) { yt.pauseVideo(); beatUi(false); return; }
+  if (!$('yt').value) { const first = $('presets').querySelector('button'); [...$('presets').children].forEach(x => x.classList.toggle('on', x === first)); $('yt').value = first.dataset.yt; }
+  if (yt && ytReady && curV && JSON.stringify(curV) === JSON.stringify(parseYt($('yt').value))) { vol(); yt.playVideo(); beatUi(true); }
+  else loadBeat(true);
+}
+document.querySelectorAll('.beatBtn').forEach(b => (b.onclick = beatToggle));
 async function loadBeat(autoplay) {
   const v = parseYt($('yt').value); if (!v) { $('now').textContent = 'That does not look like a YouTube link.'; return; }
   let YT; try { YT = await loadYtApi(); } catch { $('now').textContent = 'YouTube did not load. Check your connection.'; return; }
   $('ytBox').hidden = false; save();
-  const cue = () => { const fn = playing || autoplay === true ? 'load' : 'cue'; if (v.list) yt[fn + 'Playlist']({ listType: 'playlist', list: v.list, index: 0 }); else yt[fn + 'VideoById'](v.id); };
+  curV = v; const cue = () => { const fn = autoplay === true ? 'load' : 'cue'; if (v.list) yt[fn + 'Playlist']({ listType: 'playlist', list: v.list, index: 0 }); else yt[fn + 'VideoById'](v.id); };
   if (yt) { if (ytReady) { cue(); vol(); } return; }
   yt = new YT.Player('ytPlayer', {
     width: '100%', height: '100%', playerVars: { playsinline: 1, rel: 0, modestbranding: 1 },
     events: {
-      onReady: () => { ytReady = true; cue(); vol(); if (autoplay === true && playing) yt.playVideo(); },
-      onStateChange: e => { if (e.data === YT.PlayerState.ENDED && playing) { if (v.list) yt.playVideoAt(0); else { yt.seekTo(0); yt.playVideo(); } } },
-      onError: () => ($('now').textContent = 'YouTube would not play that one here. Try another beat or paste a link.'),
+      onReady: () => { ytReady = true; cue(); vol(); },
+      onStateChange: e => { const S = YT.PlayerState; if (e.data === S.PLAYING) beatUi(true); else if (e.data === S.PAUSED) beatUi(false); else if (e.data === S.ENDED) { if (beatOn) { if (curV.list) yt.playVideoAt(0); else { yt.seekTo(0); yt.playVideo(); } } } },
+      onError: () => (beatUi(false), $('now').textContent = 'YouTube would not play that one here. Try another beat or paste a link.'),
     },
   });
 }

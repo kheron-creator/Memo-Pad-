@@ -6,6 +6,7 @@ import { VOICES, orb } from './voices.js';
 import { speakBlob } from './tts.js';
 import { parseYt, loadYtApi, beatTiles } from './yt.js';
 import { docxText } from './docx.js';
+import { supabase, audioGet, audioPut } from './cloud.js';
 const $ = id => document.getElementById(id);
 const MAX = 1000, AHEAD = 3, LS = 'memopad-reader';
 const aud = $('aud');
@@ -23,7 +24,7 @@ function renderVoices() {
   $('voiceHint').innerHTML = (v.id.startsWith('el:') ? 'Natural ElevenLabs voice (sign in to MemoPad). Each line uses credits the first time only.' : 'Free voice on this device. Downloads once, about 60 MB.') + (v.preview ? ' <a href="#" id="sample">Hear a sample</a>' : '');
   const s = $('sample'); if (s) s.onclick = e => { e.preventDefault(); new Audio(v.preview).play(); };
 }
-$('vRow').onclick = e => { const b = e.target.closest('.vchip'); if (!b) return; voice = b.dataset.id; renderVoices(); prefetch(); save(); };
+$('vRow').onclick = e => { const b = e.target.closest('.vchip'); if (!b) return; voice = b.dataset.id; renderVoices(); prefetch(); save(); authUi(); };
 
 /* ---------- text ---------- */
 const clean = s => s.replace(/^\s*(?:[-*•·]|\d+[.)])\s+/, '').trim();
@@ -52,13 +53,23 @@ function openReader() {
 const esc = s => s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
 $('text').oninput = countText;
 $('load').onclick = openReader;
-$('edit').onclick = () => { stop(); $('readBox').hidden = true; $('editBox').hidden = false; };
+$('edit').onclick = () => { stop(); localStorage.removeItem(LS + '-files'); $('readBox').hidden = true; $('editBox').hidden = false; };
 $('file').onchange = async e => {
-  const f = e.target.files[0]; if (!f) return;
+  const files = [...e.target.files]; const f = files[0]; if (!f) return;
+  const audio = files.filter(x => x.type.startsWith('audio/') || /\.(mp3|m4a|wav|aac|ogg)$/i.test(x.name));
+  if (audio.length) { audio.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })); openFiles(audio); e.target.value = ''; return; }
   try { $('text').value = /\.docx$/i.test(f.name) ? await docxText(f) : await f.text(); countText(); openReader(); }
   catch (err) { $('now').textContent = 'Could not read that file: ' + (err.message || err) + '. Try a .txt file, or paste the text.'; }
   e.target.value = '';
 };
+function openFiles(files, keep = true) {
+  if (keep) { files.forEach((f, i) => audioPut('reader-file-' + i, f)); localStorage.setItem(LS + '-files', JSON.stringify(files.map(f => f.name))); }
+  stop(); items = files.map(f => ({ text: f.name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' '), file: f })); spoken = items.map((_, i) => i);
+  docKey = 'files:' + files.map(f => f.name).join('|').slice(0, 80); cur = 0;
+  $('lines').innerHTML = items.map((x, i) => `<p data-i="${i}">♪ ${esc(x.text)}</p>`).join('');
+  $('editBox').hidden = true; $('readBox').hidden = false; $('cnt').textContent = `${files.length} audio`; show(false);
+  $('now').textContent = `${files.length} recording${files.length > 1 ? 's' : ''} ready. Pick a beat and press play.`;
+}
 $('lines').onclick = e => { const p = e.target.closest('p[data-i]'); if (!p) return; cur = spoken.indexOf(+p.dataset.i); play(true); };
 
 /* ---------- playback ---------- */
@@ -73,20 +84,20 @@ function show(scroll = true) {
   $('pos').textContent = `${cur + 1} / ${spoken.length}`;
   $('now').textContent = items[i]?.text || '';
 }
-function prefetch() { for (let k = 1; k <= AHEAD; k++) { const i = spoken[cur + k]; if (i != null) speakBlob(items[i].text, voice).catch(() => {}); } }
-let token = 0;
+function prefetch() { for (let k = 1; k <= AHEAD; k++) { const i = spoken[cur + k]; if (i != null && !items[i].file) speakBlob(items[i].text, voice).catch(() => {}); } }
+let token = 0, lastSrc = '';
 async function speakCurrent() {
   const my = ++token; clearTimeout(gapTimer); show();
   const line = items[spoken[cur]];
   try {
-    const blob = await speakBlob(line.text, voice, p => ($('now').textContent = `Downloading the free voice… ${Math.round(p * 100)}%`));
+    const blob = line.file || await speakBlob(line.text, voice, p => ($('now').textContent = `Downloading the free voice… ${Math.round(p * 100)}%`));
     if (my !== token || !playing) return;
-    if (aud.src) URL.revokeObjectURL(aud.src);
-    aud.src = URL.createObjectURL(blob); aud.playbackRate = +$('rate').value; await aud.play(); show(false); prefetch(); save();
+    if (lastSrc) URL.revokeObjectURL(lastSrc);
+    aud.src = lastSrc = URL.createObjectURL(blob); aud.playbackRate = +$('rate').value; await aud.play(); show(false); prefetch(); save();
   } catch (err) { if (my === token) { stop(); $('now').textContent = 'The voice could not play: ' + (err.message || err) + '.'; } }
 }
 aud.onended = () => {
-  if (!playing) return;
+  if (!playing || aud.src === SILENT) return;
   gapTimer = setTimeout(() => {
     if (repLeft > 1) { repLeft--; aud.currentTime = 0; aud.play(); return; }
     if (cur < spoken.length - 1) { cur++; repLeft = +$('rep').value; speakCurrent(); }
@@ -95,11 +106,21 @@ aud.onended = () => {
   }, +$('gap').value * 1000);
 };
 function setBtn() { document.body.classList.toggle('playing', playing); }
-async function play(fromHere) {
+// iPhones only let sound start straight from a tap, so we start everything synchronously here
+// (a silent clip unlocks the voice player, then later lines can play on their own).
+const SILENT = (() => { const n = 800, b = new ArrayBuffer(44 + n * 2), d = new DataView(b), w = (o, t) => [...t].forEach((c, i) => d.setUint8(o + i, c.charCodeAt(0)));
+  w(0, 'RIFF'); d.setUint32(4, 36 + n * 2, true); w(8, 'WAVEfmt '); d.setUint32(16, 16, true); d.setUint16(20, 1, true); d.setUint16(22, 1, true); d.setUint32(24, 8000, true); d.setUint32(28, 16000, true); d.setUint16(32, 2, true); d.setUint16(34, 16, true); w(36, 'data'); d.setUint32(40, n * 2, true);
+  return URL.createObjectURL(new Blob([b], { type: 'audio/wav' })); })();
+let unlocked = false;
+function unlock() {
+  graph(); actx.resume();
+  if (!unlocked) { unlocked = true; aud.src = SILENT; aud.play().catch(() => {}); }
+}
+function play(fromHere) {
   if (!spoken.length) openReader(); if (!spoken.length) return;
-  graph(); await actx.resume(); playing = true; repLeft = +$('rep').value; setBtn();
-  if (yt && ytReady) { vol(); yt.playVideo(); }
-  if (fromHere || !aud.src || aud.ended) speakCurrent(); else aud.play();
+  unlock(); playing = true; repLeft = +$('rep').value; setBtn();
+  if (yt && ytReady) { vol(); yt.playVideo(); } else if ($('yt').value && !yt) loadBeat(true);
+  if (fromHere || !lastSrc || aud.ended || aud.src === SILENT) speakCurrent(); else aud.play().catch(() => speakCurrent());
 }
 function stop() { playing = false; token++; clearTimeout(gapTimer); aud.pause(); if (yt && ytReady) yt.pauseVideo(); setBtn(); }
 $('play').onclick = () => (playing ? stop() : play(false));
@@ -113,18 +134,18 @@ if ('mediaSession' in navigator) { navigator.mediaSession.setActionHandler('next
 
 /* ---------- beat (YouTube) ---------- */
 $('presets').innerHTML = beatTiles();
-$('presets').onclick = e => { const b = e.target.closest('button'); if (!b) return; [...$('presets').children].forEach(x => x.classList.toggle('on', x === b)); $('yt').value = b.dataset.yt; loadBeat(); };
-$('ytLoad').onclick = loadBeat; $('yt').onkeydown = e => { if (e.key === 'Enter') loadBeat(); };
-async function loadBeat() {
+$('presets').onclick = e => { const b = e.target.closest('button'); if (!b) return; [...$('presets').children].forEach(x => x.classList.toggle('on', x === b)); $('yt').value = b.dataset.yt; loadBeat(playing); };
+$('ytLoad').onclick = () => loadBeat(); $('yt').onkeydown = e => { if (e.key === 'Enter') loadBeat(); };
+async function loadBeat(autoplay) {
   const v = parseYt($('yt').value); if (!v) { $('now').textContent = 'That does not look like a YouTube link.'; return; }
   let YT; try { YT = await loadYtApi(); } catch { $('now').textContent = 'YouTube did not load. Check your connection.'; return; }
   $('ytBox').hidden = false; save();
-  const cue = () => { const fn = playing ? 'load' : 'cue'; if (v.list) yt[fn + 'Playlist']({ listType: 'playlist', list: v.list, index: 0 }); else yt[fn + 'VideoById'](v.id); };
+  const cue = () => { const fn = playing || autoplay === true ? 'load' : 'cue'; if (v.list) yt[fn + 'Playlist']({ listType: 'playlist', list: v.list, index: 0 }); else yt[fn + 'VideoById'](v.id); };
   if (yt) { if (ytReady) { cue(); vol(); } return; }
   yt = new YT.Player('ytPlayer', {
     width: '100%', height: '100%', playerVars: { playsinline: 1, rel: 0, modestbranding: 1 },
     events: {
-      onReady: () => { ytReady = true; cue(); vol(); },
+      onReady: () => { ytReady = true; cue(); vol(); if (autoplay === true && playing) yt.playVideo(); },
       onStateChange: e => { if (e.data === YT.PlayerState.ENDED && playing) { if (v.list) yt.playVideoAt(0); else { yt.seekTo(0); yt.playVideo(); } } },
       onError: () => ($('now').textContent = 'YouTube would not play that one here. Try another beat or paste a link.'),
     },
@@ -135,5 +156,21 @@ async function loadBeat() {
 if (saved.voice && VOICES.some(v => v.id === saved.voice)) voice = saved.voice;
 ['aVol', 'mVol', 'rate', 'rep', 'gap'].forEach(id => { if (saved[id]) $(id).value = saved[id]; });
 renderVoices();
-if (saved.text) { $('text').value = saved.text; openReader(); } else countText();
+const savedFiles = (() => { try { return JSON.parse(localStorage.getItem(LS + '-files')) || []; } catch { return []; } })();
+if (savedFiles.length) Promise.all(savedFiles.map((n, i) => audioGet('reader-file-' + i).then(b => b && new File([b], n, { type: b.type })))).then(fs => { fs = fs.filter(Boolean); if (fs.length) openFiles(fs, false); else if (saved.text) { $('text').value = saved.text; openReader(); } });
+else if (saved.text) { $('text').value = saved.text; openReader(); } else countText();
 if (saved.yt) $('yt').value = saved.yt;
+
+/* ---------- sign in (needed for ElevenLabs voices) ---------- */
+async function authUi() {
+  const { data: { session } } = await supabase.auth.getSession();
+  const needs = voice.startsWith('el:') && !session;
+  $('signin').hidden = !needs;
+}
+$('signin').onsubmit = async e => {
+  e.preventDefault(); $('siMsg').textContent = 'Signing in…';
+  const { error } = await supabase.auth.signInWithPassword({ email: $('siEmail').value.trim(), password: $('siPass').value });
+  $('siMsg').textContent = error ? error.message : ''; if (!error) authUi();
+};
+supabase.auth.onAuthStateChange(() => authUi());
+authUi();

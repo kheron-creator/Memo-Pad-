@@ -25,14 +25,19 @@
     <h2><b>1</b> Voice</h2>
     <div class="vrow" id="vRow"></div>
     <p class="hint" id="voiceHint"></p>
+    <form class="signin" id="signin" hidden autocomplete="on">
+      <p class="hint">Sign in with your MemoPad (Progress Pad) account to use the natural voices.</p>
+      <div class="row"><input id="siEmail" type="text" inputmode="email" placeholder="Email" autocomplete="email"><input id="siPass" type="password" placeholder="Password" autocomplete="current-password"><button class="ghost grad-text" type="submit">Sign in</button></div>
+      <p class="hint" id="siMsg"></p>
+    </form>
   </section>
 
   <section class="step">
     <h2><b>2</b> Affirmations <span class="cnt" id="cnt"></span></h2>
     <div id="editBox">
-      <textarea id="text" rows="8" placeholder="Paste your affirmations here, one per line. Lines starting with # become section titles."></textarea>
+      <textarea id="text" rows="8" placeholder="Paste your affirmations here, one per line. Lines starting with # become section titles. Already made your affirmations as audio (e.g. in ElevenLabs)? Upload the MP3s instead."></textarea>
       <div class="row">
-        <label class="ghost btn"><input id="file" type="file" accept=".txt,.md,.docx,text/plain" hidden>Upload .txt or Word</label>
+        <label class="ghost btn"><input id="file" type="file" accept=".txt,.md,.docx,text/plain,audio/*" multiple hidden>Upload text, Word or audio</label>
         <button id="load" class="ghost grad-text">Ready to read ✓</button>
       </div>
     </div>

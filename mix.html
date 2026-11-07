@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Play over music · MemoPad</title>
+<meta name="description" content="Hear your affirmations over your favourite song and balance the volume.">
+<meta name="theme-color" content="#000000">
+<link rel="icon" type="image/png" href="/favicon-64.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Dosis:wght@400;500;600;700;800&family=Poppins:wght@500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+<main class="cp">
+  <header class="top">
+    <a href="/" class="brand"><img src="/favicon-64.png" alt=""><span><b>MemoPad</b><i>Did you get the message?</i></span></a>
+    <nav class="tabs"><a href="/create.html">Create</a><a href="/reader.html">Reader</a><a href="/mix.html" class="on">Play</a></nav>
+  </header>
+  <h1>Play over music</h1>
+  <p class="sub">Your affirmations on top, your favourite beat underneath. <span class="pilot">Pilot</span></p>
+
+  <section class="step">
+    <h2><b>1</b> Affirmations</h2>
+    <div class="chips" id="aMode">
+      <button data-a="memo" class="on">From my MemoPad</button>
+      <button data-a="file">A file on this device</button>
+    </div>
+    <div class="row" data-ap="memo"><select id="memo" style="flex:1"><option value="">Loading your memos…</option></select></div>
+    <div class="row" data-ap="file" hidden><input id="aFile" type="file" accept="audio/*"><span class="hint">e.g. an MP3 from ElevenLabs or from Create.</span></div>
+  </section>
+
+  <section class="step">
+    <h2><b>2</b> Music</h2>
+    <div class="chips" id="mMode">
+      <button data-m="yt" class="on">YouTube</button>
+      <button data-m="file">A file on this device</button>
+    </div>
+    <div class="moods" data-mp="yt" id="presets"></div>
+    <div class="row" data-mp="yt"><input id="yt" type="text" placeholder="Paste a YouTube link (song or playlist)" autocomplete="off"><button id="ytLoad" class="ghost">Load</button></div>
+    <div class="row" data-mp="file" hidden><input id="mFile" type="file" accept="audio/*"></div>
+    <div class="ytbox" id="ytBox" hidden><div id="ytPlayer"></div></div>
+  </section>
+
+  <section class="step">
+    <h2><b>3</b> Balance</h2>
+    <label class="vol big"><span>Affirmations</span> <input id="aVol" type="range" min="0" max="200" value="100"></label>
+    <label class="vol big"><span>Music</span> <input id="mVol" type="range" min="0" max="100" value="30"></label>
+    <div class="row opts">
+      <label><input type="checkbox" id="loopM" checked> Loop the music</label>
+      <label><input type="checkbox" id="loopA"> Loop the affirmations</label>
+    </div>
+    <button id="play" class="go">PLAY BOTH</button>
+    <div class="row prog"><span id="tNow">0:00</span><input id="seek" type="range" min="0" max="1000" value="0"><span id="tDur">0:00</span></div>
+    <p class="hint" id="msg"></p>
+  </section>
+  <footer><b>MemoPad</b> by Progress Today · <a href="/create.html">Create a track</a> · <a href="/">Open MemoPad</a></footer>
+</main>
+<audio id="aud" playsinline crossorigin="anonymous" preload="auto"></audio>
+<audio id="mus" playsinline preload="auto"></audio>
+<script type="module" src="/src/mix.js"></script>
+</body>
+</html>

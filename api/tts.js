@@ -1,22 +1,20 @@
 // ElevenLabs text to speech for MemoPad Create. Runs on Vercel so the API key never reaches the browser.
-// Needs the Vercel environment variable ELEVENLABS_API_KEY. Only signed-in MemoPad users can call it,
-// only with the voices listed here, and only short texts (one affirmation line at a time).
+// Needs the Vercel environment variable ELEVENLABS_API_KEY. No sign-in needed: it only answers requests
+// from MemoPad's own pages, only with the voices listed here, and only short texts (one affirmation line at a time).
 const VOICES = {
   JBFqnCBsd6RMkjVDRZzb: 'George', Xb7hH8MSUJpSbSDYk0k2: 'Alice', EXAVITQu4vr4xnSDxMaL: 'Sarah',
   nPczCjzI2devNBz1zQrb: 'Brian', SAz9YHcvj6GT2YYXdXww: 'River', bIHbv24MWmeRgasZH58o: 'Will',
 };
-const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'https://hiwgaywnfxzeptflxrsi.supabase.co';
-const SUPABASE_ANON = process.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhpd2dheXduZnh6ZXB0Zmx4cnNpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc3NDQyNDcsImV4cCI6MjEwMzMyMDI0N30.Kce8oAmx7SSkoytOuGZTaD8jDc84bM2yQ5rqUuw3hxw';
 const MAX_CHARS = 500;
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
   const key = process.env.ELEVENLABS_API_KEY;
   if (!key) return res.status(503).json({ error: 'not_configured' });
-  const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
-  if (!token) return res.status(401).json({ error: 'sign_in' });
-  const who = await fetch(`${SUPABASE_URL}/auth/v1/user`, { headers: { apikey: SUPABASE_ANON, Authorization: `Bearer ${token}` } });
-  if (!who.ok) return res.status(401).json({ error: 'sign_in' });
+  // Only our own pages (same site) may use it, so other websites can't spend the credits.
+  const from = req.headers.origin || req.headers.referer || '';
+  let fromHost = ''; try { fromHost = new URL(from).host; } catch {}
+  if (!fromHost || fromHost !== req.headers.host) return res.status(403).json({ error: 'origin' });
   let body = req.body; if (typeof body === 'string') try { body = JSON.parse(body); } catch { body = {}; }
   const text = String(body?.text || '').trim(), voice = String(body?.voice || '');
   if (!VOICES[voice]) return res.status(400).json({ error: 'voice' });

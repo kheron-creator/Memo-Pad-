@@ -25,11 +25,6 @@
     <h2><b>1</b> Voice</h2>
     <div class="vrow" id="vRow"></div>
     <p class="hint" id="voiceHint"></p>
-    <form class="signin" id="signin" hidden autocomplete="on">
-      <p class="hint">Sign in with your MemoPad (Progress Pad) account to use the natural voices.</p>
-      <div class="row"><input id="siEmail" type="text" inputmode="email" placeholder="Email" autocomplete="email"><input id="siPass" type="password" placeholder="Password" autocomplete="current-password"><button class="ghost grad-text" type="submit">Sign in</button></div>
-      <p class="hint" id="siMsg"></p>
-    </form>
   </section>
 
   <section class="step">
@@ -66,7 +61,7 @@
     <button class="db" id="more" aria-label="Settings"><svg viewBox="0 0 24 24"><path d="M4 7h10v2H4zM17 6h3v4h-3zM4 15h3v2H4zM10 14h10v4H10z" opacity=".9"/></svg></button>
   </div>
   <div class="dset" id="dset" hidden>
-    <label>Voice <input id="aVol" type="range" min="0" max="200" value="100"></label>
+    <label>Voice <input id="aVol" type="range" min="0" max="100" value="100"></label>
     <label>Beat <input id="mVol" type="range" min="0" max="100" value="30"></label>
     <div class="row">
       <label>Speed <select id="rate"><option>0.8</option><option>0.9</option><option selected>1</option><option>1.1</option><option>1.25</option></select></label>

@@ -6,12 +6,12 @@ import { VOICES, orb } from './voices.js';
 import { speakBlob } from './tts.js';
 import { parseYt, loadYtApi, beatTiles } from './yt.js';
 import { docxText } from './docx.js';
-import { supabase, audioGet, audioPut } from './cloud.js';
+import { audioGet, audioPut } from './cloud.js';
 const $ = id => document.getElementById(id);
 const MAX = 1000, AHEAD = 3, LS = 'memopad-reader';
 const aud = $('aud');
 let voice = VOICES[0].id, items = [], spoken = [], cur = 0, playing = false, repLeft = 0, gapTimer = 0, docKey = '';
-let actx = null, gain = null, yt = null, ytReady = false;
+let yt = null, ytReady = false;
 
 /* ---------- saved state ---------- */
 const saved = (() => { try { return JSON.parse(localStorage.getItem(LS)) || {}; } catch { return {}; } })();
@@ -21,10 +21,10 @@ const save = () => { saved.pos = { ...(saved.pos || {}), [docKey]: cur }; localS
 function renderVoices() {
   $('vRow').innerHTML = VOICES.map(v => `<button class="vchip${v.id === voice ? ' on' : ''}" data-id="${v.id}"><i class="orb" style="background:${orb(v)}"></i><span><b>${v.name}</b><small>${v.desc}</small></span></button>`).join('');
   const v = VOICES.find(x => x.id === voice);
-  $('voiceHint').innerHTML = (v.id.startsWith('el:') ? 'Natural ElevenLabs voice (sign in to MemoPad). Each line uses credits the first time only.' : 'Free voice on this device. Downloads once, about 60 MB.') + (v.preview ? ' <a href="#" id="sample">Hear a sample</a>' : '');
+  $('voiceHint').innerHTML = (v.id.startsWith('el:') ? 'Natural ElevenLabs voice. Each line uses credits the first time only.' : 'Free voice on this device. Downloads once, about 60 MB.') + (v.preview ? ' <a href="#" id="sample">Hear a sample</a>' : '');
   const s = $('sample'); if (s) s.onclick = e => { e.preventDefault(); new Audio(v.preview).play(); };
 }
-$('vRow').onclick = e => { const b = e.target.closest('.vchip'); if (!b) return; voice = b.dataset.id; renderVoices(); prefetch(); save(); authUi(); };
+$('vRow').onclick = e => { const b = e.target.closest('.vchip'); if (!b) return; voice = b.dataset.id; renderVoices(); prefetch(); save(); };
 
 /* ---------- text ---------- */
 const clean = s => s.replace(/^\s*(?:[-*•·]|\d+[.)])\s+/, '').trim();
@@ -73,11 +73,10 @@ function openFiles(files, keep = true) {
 $('lines').onclick = e => { const p = e.target.closest('p[data-i]'); if (!p) return; cur = spoken.indexOf(+p.dataset.i); play(true); };
 
 /* ---------- playback ---------- */
-function graph() {
-  if (actx) return; actx = new (window.AudioContext || window.webkitAudioContext)();
-  gain = actx.createGain(); actx.createMediaElementSource(aud).connect(gain).connect(actx.destination); vol();
-}
-function vol() { if (gain) gain.gain.value = +$('aVol').value / 100; if (yt && ytReady) yt.setVolume(+$('mVol').value); }
+// The voice plays straight through the audio player (not Web Audio), so the iPhone silent switch can't mute it
+// and it mixes with the YouTube beat. Phones may ignore the voice volume; the beat volume always works.
+if (navigator.audioSession) try { navigator.audioSession.type = 'playback'; } catch {}
+function vol() { aud.volume = Math.min(1, +$('aVol').value / 100); if (yt && ytReady) yt.setVolume(+$('mVol').value); }
 function show(scroll = true) {
   const i = spoken[cur]; document.querySelectorAll('#lines p.now').forEach(p => p.classList.remove('now'));
   const p = document.querySelector(`#lines p[data-i="${i}"]`); if (p) { p.classList.add('now'); if (scroll) { const box = $('lines'); box.scrollTo({ top: p.offsetTop - box.clientHeight / 2 + p.clientHeight / 2, behavior: 'smooth' }); } }
@@ -113,7 +112,7 @@ const SILENT = (() => { const n = 800, b = new ArrayBuffer(44 + n * 2), d = new 
   return URL.createObjectURL(new Blob([b], { type: 'audio/wav' })); })();
 let unlocked = false;
 function unlock() {
-  graph(); actx.resume();
+  vol();
   if (!unlocked) { unlocked = true; aud.src = SILENT; aud.play().catch(() => {}); }
 }
 function play(fromHere) {
@@ -160,17 +159,3 @@ const savedFiles = (() => { try { return JSON.parse(localStorage.getItem(LS + '-
 if (savedFiles.length) Promise.all(savedFiles.map((n, i) => audioGet('reader-file-' + i).then(b => b && new File([b], n, { type: b.type })))).then(fs => { fs = fs.filter(Boolean); if (fs.length) openFiles(fs, false); else if (saved.text) { $('text').value = saved.text; openReader(); } });
 else if (saved.text) { $('text').value = saved.text; openReader(); } else countText();
 if (saved.yt) $('yt').value = saved.yt;
-
-/* ---------- sign in (needed for ElevenLabs voices) ---------- */
-async function authUi() {
-  const { data: { session } } = await supabase.auth.getSession();
-  const needs = voice.startsWith('el:') && !session;
-  $('signin').hidden = !needs;
-}
-$('signin').onsubmit = async e => {
-  e.preventDefault(); $('siMsg').textContent = 'Signing in…';
-  const { error } = await supabase.auth.signInWithPassword({ email: $('siEmail').value.trim(), password: $('siPass').value });
-  $('siMsg').textContent = error ? error.message : ''; if (!error) authUi();
-};
-supabase.auth.onAuthStateChange(() => authUi());
-authUi();

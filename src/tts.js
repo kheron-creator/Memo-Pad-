@@ -1,7 +1,7 @@
 // Shared text to speech for MemoPad (Create and Reader).
 // ElevenLabs voices go through our server function /api/tts (the key stays on Vercel).
 // Free voices (Piper) run on the device. Every spoken line is cached on the device, so replays cost nothing.
-import { supabase, audioGet, audioPut } from './cloud.js';
+import { audioGet, audioPut } from './cloud.js';
 let piper = null;
 const loadPiper = () => (piper ||= import('@diffusionstudio/vits-web'));
 const hash = s => { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36); };
@@ -9,12 +9,10 @@ const mem = new Map();
 export const cacheKey = (voiceId, text) => `tts:${voiceId}:${hash(text)}:${text.length}`;
 
 async function eleven(text, voice) {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session) throw new Error('sign in to MemoPad first to use ElevenLabs voices');
-  const r = await fetch('/api/tts', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` }, body: JSON.stringify({ text, voice }) });
+  const r = await fetch('/api/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, voice }) });
   if (!r.ok) {
     const e = await r.json().catch(() => ({}));
-    throw new Error({ not_configured: 'ElevenLabs is not switched on yet (the API key is missing)', sign_in: 'sign in to MemoPad first to use ElevenLabs voices', text: 'that line is too long, keep each line under 500 characters' }[e.error] || `ElevenLabs said no (${e.status || r.status})`);
+    throw new Error({ not_configured: 'ElevenLabs is not switched on yet (the API key is missing)', text: 'that line is too long, keep each line under 500 characters' }[e.error] || `ElevenLabs said no (${e.status || r.status})`);
   }
   return r.blob();
 }

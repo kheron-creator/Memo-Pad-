@@ -1042,18 +1042,27 @@ let worker = null, txing = null; // the memo being transcribed right now
 const txQueue = [];
 const busyFor = t => !!t && txing === t;
 function updateMain() {
-  const b = $('mainBtn');
-  if (busyFor(cur)) { b.textContent = 'TRANSCRIBING…'; b.disabled = true; return; }
-  if (cur && txQueue.includes(cur)) { b.textContent = 'WAITING…'; b.disabled = true; return; }
-  if (upBusy) { b.textContent = 'ADDING…'; b.disabled = true; return; }
-  b.disabled = false;
-  b.classList.toggle('fav', !!(cur && cur.words.length));
-  if (cur && cur.words.length) { const sn = nowSentence(); b.textContent = sn && favIndex(sn[0], sn[1]) >= 0 ? '★ FAVOURITED' : '☆ FAVOURITE'; }
-  else b.textContent = 'TRANSCRIBE';
+  // the big button is always ☆ FAVOURITE: the line you're hearing, or (no transcript yet) the chapter you're in
+  const b = $('mainBtn'); b.disabled = !cur; b.classList.add('fav');
+  if (!cur) { b.textContent = '☆ FAVOURITE'; return; }
+  let on = false;
+  if (cur.words.length) { const sn = nowSentence(); on = !!sn && favIndex(sn[0], sn[1]) >= 0; }
+  else { const mo = curMoment(); on = !!mo && favIndex(mo.j, mo.k) >= 0; }
+  b.textContent = on ? '★ FAVOURITED' : '☆ FAVOURITE';
 }
-// the main button saves the affirmation you are hearing right now (it also goes to Progress Pad Quotes)
-const nowSentence = () => cur && cur.words.length ? sentenceAt(Math.max(0, activeWord(audio.currentTime))) : null;
-$('mainBtn').onclick = () => { if (!cur) return; if (cur.words.length) { const [j, k] = nowSentence(); toggleFav(j, k); updateMain(); return; } if (!isOwn(cur)) return; { if (lowPower && cur.duration > 600 && !confirm(`This track is ${Math.round(cur.duration / 60)} minutes long. Transcribing it on a phone takes a long time and can make the app slow. It works best on a computer, or you can paste your written script in Settings. Transcribe here anyway?`)) return; enqueueTranscribe(cur); } };
+// no transcript: favourite the chapter you're in, or the half minute around now
+function curMoment() {
+  if (!cur) return null; const t = audio.currentTime || 0;
+  if (cur.chapters.length > 1) { const k = Math.max(0, chapterAt(t)), c = cur.chapters[k], n = cur.chapters[k + 1]; return { j: 'ch', k, t0: c.t, t1: n ? n.t : (cur.duration || c.t + 60), text: c.title }; }
+  const t0 = Math.max(0, Math.floor((t - 5) / 30) * 30); return { j: 'at', k: t0, t0, t1: t0 + 30, text: `${cur.title} at ${short(t0)}` };
+}
+function toggleMoment() {
+  const mo = curMoment(); if (!mo) return; const x = favIndex(mo.j, mo.k);
+  if (x >= 0) { favs.splice(x, 1); toast('Removed from favourites.', false, 2000); }
+  else { favs.unshift({ m: cur.id, ...mo }); toast('Saved to favourites ★', false, 2000); }
+  localStorage.setItem(favKey(), JSON.stringify(favs)); renderLib(); if ($('favDlg').classList.contains('open')) renderFavDlg(); updateMain();
+}
+$('mainBtn').onclick = () => { if (!cur) return; if (cur.words.length) { const sn = nowSentence(); if (sn) toggleFav(sn[0], sn[1]); updateMain(); return; } toggleMoment(); };
 function prog(p) { $('prog').style.display = p == null ? 'none' : 'block'; $('prog').firstChild.style.width = (p || 0) + '%'; }
 // automatic transcription, like Voice Memos: every new memo joins a queue and is transcribed in the background
 // phones and small tablets: transcribing a long track by itself can freeze the app, so only short ones run automatically
@@ -1175,7 +1184,7 @@ function loop() {
     const t = audio.currentTime; $('clock').textContent = clockFmt(t);
     const k = chapterAt(t); if (k !== lastChap) { lastChap = k; $('chapnow').textContent = k >= 0 && cur.chapters.length > 1 ? `Chapter ${k + 1} · ${cur.chapters[k].title}` : ''; $('clist').querySelectorAll('.chap').forEach(el => el.classList.toggle('on', +el.dataset.k === k)); updateMediaSession(); }
     if (repeatMode === 'ch' && !pl && !rep && !audio.paused && k >= 0) { const end = cur.chapters[k + 1]?.t ?? cur.duration; if (t >= end - 0.05) audio.currentTime = cur.chapters[k].t; }
-    if (cur.words.length && ++favTick % 15 === 0) updateMain();
+    if (++favTick % 15 === 0) updateMain();
     tickStats(t); tickPlaylist(t); tickRep(t); if (!$('reader').hidden) tickReader(t);
     updateTranscript(); if (++ovTick % 6 === 0) drawOverview();
   }
@@ -1496,7 +1505,7 @@ function toggleFav(j, k) {
 }
 function markFavs() {
   wordEls.forEach(el => el.classList.remove('fav')); if (!cur) return;
-  favs.filter(f => f.m === cur.id).forEach(f => { for (let i = f.j; i <= f.k; i++) wordEls[i]?.classList.add('fav'); });
+  favs.filter(f => f.m === cur.id && typeof f.j === 'number').forEach(f => { for (let i = f.j; i <= f.k; i++) wordEls[i]?.classList.add('fav'); });
 }
 function renderFavs(L, q) {
   const list = favs.filter(f => tracks.some(t => t.id === f.m) && (!q || norm(f.text).includes(q))); if (!list.length) return;

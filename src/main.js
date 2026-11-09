@@ -712,7 +712,7 @@ function sizeCanvas(c) { const r = c.getBoundingClientRect(), d = devicePixelRat
 const PX_PER_SEC = () => wv.width / 7.5; // about 7.5 seconds visible, like a voice memo
 function rrect(ctx, x, y, w, h, r) { ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(x, y, w, h, r); else ctx.rect(x, y, w, h); ctx.fill(); }
 // ---------- visualiser styles (driven by the memo's own sound levels, so it works with the screen locked or in the car) ----------
-let vizStyle = ['wave', 'bars', 'circle', 'black'].includes(localStorage.getItem('mp.viz')) ? localStorage.getItem('mp.viz') : 'wave', vizEnv = 0, vizHist = new Array(64).fill(0);
+let vizStyle = (v => v === 'black' ? 'time' : ['wave', 'bars', 'circle', 'time'].includes(v) ? v : 'wave')(localStorage.getItem('mp.viz')), vizEnv = 0, vizHist = new Array(64).fill(0);
 function setViz(v) { vizStyle = v; localStorage.setItem('mp.viz', v); $('waveWrap').classList.toggle('viz', v !== 'wave'); document.querySelectorAll('#vizSw button, #vfSw button').forEach(b => b.classList.toggle('on', b.dataset.v === v)); }
 document.querySelectorAll('#vizSw button, #vfSw button').forEach(b => b.onclick = e => { e.stopPropagation(); setViz(b.dataset.v); });
 setViz(vizStyle);
@@ -726,7 +726,7 @@ function drawMiniWave(d, cv, wx, t, cols) {
 // live sound analysis: a silent twin of the player feeds an analyser, so the main audio
 // is never routed through Web Audio (that keeps lock screen and car playback safe)
 let an = null;
-const vizOn = () => vizStyle !== 'black' && ((vizStyle !== 'wave' && mode === 'wave') || !$('vFull').hidden);
+const vizOn = () => vizStyle !== 'time' && ((vizStyle !== 'wave' && mode === 'wave') || !$('vFull').hidden);
 function anEnsure() {
   if (an) return an;
   try {
@@ -760,8 +760,37 @@ function anLevels() {
 }
 // 32 bands spread across the voice and music range (roughly 80 Hz to 8 kHz)
 const BANDS = Array.from({ length: 33 }, (_, k) => Math.round(2 + Math.pow(k / 32, 1.7) * 92));
+// ---------- Listen Time view: today, this week, all time (on black) ----------
+const hm = s => { const m = Math.floor(s / 60), h = Math.floor(m / 60); return h ? `${h}h ${m % 60}m` : `${m}m`; };
+function listenTotals() {
+  const days = (typeof stats === 'object' && stats.days) || {}, now = new Date(), today = dayOf(now);
+  const mon = new Date(now); mon.setDate(now.getDate() - ((now.getDay() + 6) % 7)); // weeks start on Monday
+  const week = []; for (let i = 0; i < 7; i++) { const x = new Date(mon); x.setDate(mon.getDate() + i); const k = dayOf(x); week.push({ k, v: days[k] || 0, now: k === today }); }
+  return { today: days[today] || 0, week: week.reduce((a, b) => a + b.v, 0), all: Object.values(days).reduce((a, b) => a + b, 0), days: week };
+}
+function drawListenTime(cv, wx, d) {
+  const W = cv.width, H = cv.height, L = listenTotals(); d = d || 1;
+  wx.fillStyle = '#000'; wx.fillRect(0, 0, W, H);
+  const big = Math.min(W / 7.5, H / 6.5), cx = W / 2;
+  wx.textAlign = 'center'; wx.textBaseline = 'alphabetic';
+  wx.fillStyle = '#8a8a90'; wx.font = `600 ${Math.round(big * 0.24)}px Poppins, system-ui, sans-serif`;
+  wx.fillText('LISTEN TIME', cx, H * 0.2);
+  [[L.today, 'Today'], [L.week, 'This week'], [L.all, 'All time']].forEach(([v, lab], i) => {
+    const x = W * (i + 0.5) / 3, y = H * 0.44;
+    wx.fillStyle = '#fff'; wx.font = `700 ${Math.round(big * (i === 0 ? 0.62 : 0.5))}px Poppins, system-ui, sans-serif`; wx.fillText(hm(v), x, y);
+    wx.fillStyle = '#8a8a90'; wx.font = `600 ${Math.round(big * 0.22)}px Poppins, system-ui, sans-serif`; wx.fillText(lab, x, y + big * 0.42);
+  });
+  // this week, Monday to Sunday
+  const n = 7, bw = Math.min(W * 0.05, 26 * d), gap = bw * 0.9, tot = n * bw + (n - 1) * gap, x0 = cx - tot / 2, base = H * 0.82, hmax = H * 0.16;
+  const mx = Math.max(GOAL, ...L.days.map(x => x.v));
+  L.days.forEach((x, i) => {
+    const h = Math.max(x.v ? 3 * d : 2 * d, x.v / mx * hmax), bx = x0 + i * (bw + gap);
+    wx.fillStyle = x.now ? '#fff' : x.v ? '#6b6b72' : '#2a2a2e'; wx.beginPath(); wx.roundRect ? wx.roundRect(bx, base - h, bw, h, Math.min(bw / 2, 4 * d)) : wx.rect(bx, base - h, bw, h); wx.fill();
+    wx.fillStyle = x.now ? '#fff' : '#6b6b72'; wx.font = `600 ${Math.round(Math.max(10 * d, big * 0.17))}px Poppins, system-ui, sans-serif`; wx.fillText('MTWTFSS'[i], bx + bw / 2, base + big * 0.3);
+  });
+}
 function drawViz(d, cv = wv, wx = cv.getContext('2d'), style = vizStyle) {
-  if (style === 'black') { wx.fillStyle = '#000'; wx.fillRect(0, 0, cv.width, cv.height); return; } // plain black screen: nothing moving
+  if (style === 'time') { drawListenTime(cv, wx, d); return; } // black screen with your listening totals
   anSync(false); const F = anLevels();
   const W = cv.width, H = cv.height, t = audio.currentTime || 0, cols = THEMES[theme], now = performance.now() / 1000;
   let live = null;

@@ -107,6 +107,7 @@ async function start(u) {
   renderCats(); renderLib(); if (!openDeep()) { if (tracks[0]) select(tracks[0]); else showEmpty(); }
   requestAnimationFrame(loop);
   await refresh();
+  syncListens();
   importSharedPlaylist();
   if (sessionStorage.getItem('mp.deep') && !openDeep()) { sessionStorage.removeItem('mp.deep'); toast('That memo is not shared with you, or it was removed.', true); }
   refreshStorage();
@@ -265,8 +266,8 @@ function allCats() {
 }
 function renderCats() {
   const C = $('cats'); C.innerHTML = '';
-  ['', ...allCats()].forEach(c => {
-    const b = document.createElement('button'); b.textContent = c || 'All'; b.className = c === catFilter ? 'on' : '';
+  ['', LOVED, ...allCats()].forEach(c => {
+    const b = document.createElement('button'); b.textContent = c === LOVED ? '♥ Loved' : c || 'All'; b.className = (c === catFilter ? 'on' : '') + (c === LOVED ? ' lovedcat' : '');
     b.onclick = () => { catFilter = c; renderCats(); renderLib(); }; C.appendChild(b);
   });
 }
@@ -277,6 +278,8 @@ let libFold = false, foldT = 0;
 // once a memo is playing, its box folds down to a slim row with a progress line (tap the row to open it again)
 audio.addEventListener('play', () => { clearTimeout(foldT); foldT = setTimeout(() => { if (!audio.paused && !libFold && document.querySelector('#lib .vexp')) { libFold = true; renderLib(); } }, 1500); });
 const IC = {
+  heart: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 20.5s-7.5-4.6-9.3-9.2C1.4 7.9 3.6 4.5 7 4.5c2.1 0 3.6 1.2 5 3 1.4-1.8 2.9-3 5-3 3.4 0 5.6 3.4 4.3 6.8-1.8 4.6-9.3 9.2-9.3 9.2z"/></svg>',
+  heartOn: '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 20.5s-7.5-4.6-9.3-9.2C1.4 7.9 3.6 4.5 7 4.5c2.1 0 3.6 1.2 5 3 1.4-1.8 2.9-3 5-3 3.4 0 5.6 3.4 4.3 6.8-1.8 4.6-9.3 9.2-9.3 9.2z"/></svg>',
   wave: '<svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><rect x="3" y="10" width="2" height="4" rx="1"/><rect x="7" y="7" width="2" height="10" rx="1"/><rect x="11" y="4" width="2" height="16" rx="1"/><rect x="15" y="8" width="2" height="8" rx="1"/><rect x="19" y="10.5" width="2" height="3" rx="1"/></svg>',
   back: '<svg viewBox="0 0 52 52" width="30" height="30" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round"><path d="M26 9a17 17 0 1 1-15.6 10.2"/><path d="M26 3v12l-8-6z" fill="currentColor" stroke="none"/><text x="26" y="33" font-size="15" font-weight="800" text-anchor="middle" fill="currentColor" stroke="none" font-family="Poppins">15</text></svg>',
   fwd: '<svg viewBox="0 0 52 52" width="30" height="30" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round"><path d="M26 9a17 17 0 1 0 15.6 10.2"/><path d="M26 3v12l8-6z" fill="currentColor" stroke="none"/><text x="26" y="33" font-size="15" font-weight="800" text-anchor="middle" fill="currentColor" stroke="none" font-family="Poppins">15</text></svg>',
@@ -344,12 +347,28 @@ const recentKey = () => 'mp.recent.' + (user ? user.id : 'x');
 let _recent = null, recentSnap = null; // the list order only changes when you pick another memo, so the one playing stays put
 function recentMap() { if (!_recent) { try { _recent = JSON.parse(localStorage.getItem(recentKey())) || {}; } catch { _recent = {}; } } return _recent; }
 function markRecent(t) { if (!t) return; const R = recentMap(); R[t.id] = Date.now(); try { localStorage.setItem(recentKey(), JSON.stringify(R)); } catch {} }
-let libEditing = false;
+let libEditing = false, peek = null, peekT = 0;
+const canHover = matchMedia('(hover: hover) and (pointer: fine)').matches; // peek: a memo opened in the list while another keeps playing
+// the drop-down for a memo you tapped while another is playing: the music only changes when you press Play
+function peekBox(t) {
+  const x = document.createElement('div'); x.className = 'vpeek';
+  const ch = t.chapters && t.chapters.length > 1 ? t.chapters : [];
+  x.innerHTML = `<button type="button" class="vpk-play">${IC.play}<span>Play</span></button>${audio.paused ? '' : '<span class="vpk-note">The current memo keeps playing until you press Play.</span>'}`
+    + (ch.length ? `<div class="vpk-ch">${ch.map((c, k) => `<button type="button" data-t="${c.t}"><span class="n">${k + 1}</span><span class="tt">${esc(c.title)}</span><span class="tm">${short(c.t)}</span></button>`).join('')}</div>` : '');
+  x.addEventListener('click', e => e.stopPropagation());
+  const go = at => {
+    peek = null; stopPlaylist(); libFold = false; if (at != null) skipResume = true;
+    select(t).then(() => { if (cur !== t) return; const start = () => { if (at != null) audio.currentTime = at; audio.play().catch(() => {}); }; audio.readyState >= 1 ? start() : audio.addEventListener('loadedmetadata', start, { once: true }); renderLib(); });
+  };
+  x.querySelector('.vpk-play').onclick = () => go(null);
+  x.querySelectorAll('.vpk-ch button').forEach(b => (b.onclick = () => go(+b.dataset.t)));
+  return x;
+}
 function renderLib() {
   if (libEditing || document.querySelector('#lib .vmenu')) return;
   const L = $('lib'); L.innerHTML = '';
   const q = norm($('libq').value.trim());
-  const ok = t => (!catFilter || t.category === catFilter) && (!q || norm(t.title).includes(q) || textOf(t).includes(q));
+  const ok = t => (!catFilter || (catFilter === LOVED ? isLoved(t) : t.category === catFilter)) && (!q || norm(t.title).includes(q) || textOf(t).includes(q));
   const R = recentSnap || (recentSnap = { ...recentMap() }), byRecent = (a, b) => (R[b.id] || 0) - (R[a.id] || 0);
   const mine = tracks.filter(t => isOwn(t) && ok(t)).sort(byRecent), shared = tracks.filter(t => !isOwn(t) && ok(t)).sort(byRecent);
   const when = ms => { const d = new Date(ms), now = new Date(), day = 864e5, d0 = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
@@ -361,11 +380,20 @@ function renderLib() {
     list.forEach(t => {
       const d = document.createElement('div'); d._t = t; d.className = 'item vm' + (t === cur ? ' on' : '') + (t === cur && !audio.paused ? ' playing' : '');
       const tags = [t.category ? `<span class="cat">${esc(t.category)}</span>` : '', isOwn(t) && t.is_public ? '<span class="sh">public</span>' : '', offline.has(t.id) ? '<span class="sh">offline</span>' : '', txing === t ? '<span class="sh">transcribing…</span>' : txQueue.includes(t) ? '<span class="sh">waiting</span>' : ''].join('');
-      d.innerHTML = `<div class="vmain"><div class="nm">${esc(t.title)}</div><div class="mt"><span>${when(t.added)}</span>${stats.plays && stats.plays[t.id] ? `<span class="plays" title="Times played">▶ ${stats.plays[t.id]}</span>` : ''}${t.words.length ? txIcon : ''}${tags}</div></div><div class="vdur">${short(t.duration)}</div>`;
+      d.innerHTML = `<div class="vmain"><div class="nm">${esc(t.title)}</div><div class="mt"><span>${when(t.added)}</span>${playsOf(t) ? `<span class="plays" title="Times played">▶ ${playsOf(t)}</span>` : ''}${t.words.length ? txIcon : ''}${tags}</div></div><button type="button" class="vlove${isLoved(t) ? ' on' : ''}" aria-label="${isLoved(t) ? 'Remove from Loved' : 'Love this memo'}" title="${isLoved(t) ? 'Remove from Loved' : 'Love this memo'}">${isLoved(t) ? IC.heartOn : IC.heart}</button><div class="vdur">${short(t.duration)}</div>`;
+      d.querySelector('.vlove').onclick = e => { e.stopPropagation(); toggleLove(t); };
+      // with a mouse: hover over another memo to drop it down (nothing stops playing)
+      if (canHover) {
+        d.addEventListener('mouseenter', () => { clearTimeout(peekT); if (t !== cur && peek !== t) { peek = t; renderLib(); } });
+        d.addEventListener('mouseleave', () => { clearTimeout(peekT); peekT = setTimeout(() => { if (peek === t) { peek = null; renderLib(); } }, 350); });
+      }
       d.onclick = e => {
+        if (canHover && t !== cur && peek === t && !audio.paused) return; // already dropped down by hovering
         // like iPhone Voice Memos: tap opens the memo (press play yourself); tap the open one to fold it
-        if (t === cur) { libFold = !libFold; renderLib(); return; }
-        stopPlaylist(); libFold = false; select(t); renderLib();
+        if (t === cur) { libFold = !libFold; peek = null; renderLib(); return; }
+        // something is playing: don't stop it, just drop down this memo with a Play button
+        if (!audio.paused) { peek = peek === t ? null : t; renderLib(); return; }
+        peek = null; stopPlaylist(); libFold = false; select(t); renderLib();
       };
       const acts = document.createElement('div'); acts.className = 'vacts';
       { const a = document.createElement('button'); a.className = 'idel iadd'; a.title = 'Add to a playlist'; a.setAttribute('aria-label', 'Add ' + t.title + ' to a playlist'); a.textContent = '+'; a.onclick = e => { e.stopPropagation(); openAddPl({ m: t.id, label: t.title }); }; acts.appendChild(a); }
@@ -373,6 +401,7 @@ function renderLib() {
       d.appendChild(acts);
       if (t === cur && !libFold) { d.appendChild(libMoreBtn(t, d)); d.appendChild(libRowPlayer(t)); }
       else if (t === cur) { const th = document.createElement('div'); th.className = 'vthin'; th.innerHTML = '<i></i>'; d.appendChild(th); }
+      if (t === peek && t !== cur) d.appendChild(peekBox(t));
       L.appendChild(d);
     });
   };
@@ -380,7 +409,7 @@ function renderLib() {
   section('Shared with you', shared);
   renderFavs(L, q);
   renderPlaylists(L, q);
-  if (!mine.length && !shared.length && !L.querySelector('.pl, .fav')) L.innerHTML = `<div class="none">${tracks.length ? 'Nothing matches.' : 'No memos yet. Add your first one above.'}</div>`;
+  if (!mine.length && !shared.length && !L.querySelector('.pl, .fav')) L.innerHTML = `<div class="none">${catFilter === LOVED && !q ? 'No loved memos yet. Tap the ♡ next to a memo to add it here.' : tracks.length ? 'Nothing matches.' : 'No memos yet. Add your first one above.'}</div>`;
 }
 function showEmpty() { cur = null; $('emptycard').style.display = 'flex'; setSrc(null); $('clist').innerHTML = ''; drawOverview(); }
 function setSrc(u) { if (srcUrl && srcUrl.startsWith('blob:')) URL.revokeObjectURL(srcUrl); srcUrl = u; if (u) audio.src = u; else audio.removeAttribute('src'); }
@@ -473,6 +502,7 @@ function renderMeta() {
   $('catBtn').disabled = !own; $('catBtn').hidden = !own && !t.category;
   $('shareWrap').hidden = !own; $('shareTog').checked = !!t.is_shared;
   $('roTag').hidden = own;
+  renderLove();
 }
 $('ttl').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); } });
 $('ttl').addEventListener('blur', () => { if (!cur || !isOwn(cur)) return; const v = $('ttl').textContent.trim(); if (!v) { $('ttl').textContent = cur.title; return; } if (v !== cur.title) { cur.title = v; save(); renderLib(); } });
@@ -519,6 +549,7 @@ $('shareTog').onchange = () => {
   renderLib();
 };
 // category picker
+$('loveBtn').onclick = () => toggleLove(cur);
 $('catBtn').onclick = () => { if (!cur || !isOwn(cur)) return; renderCatPick(); $('catDlg').classList.add('open'); };
 function renderCatPick() {
   const P = $('catPick'); P.innerHTML = '';
@@ -651,7 +682,7 @@ function sizeCanvas(c) { const r = c.getBoundingClientRect(), d = devicePixelRat
 const PX_PER_SEC = () => wv.width / 7.5; // about 7.5 seconds visible, like a voice memo
 function rrect(ctx, x, y, w, h, r) { ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(x, y, w, h, r); else ctx.rect(x, y, w, h); ctx.fill(); }
 // ---------- visualiser styles (driven by the memo's own sound levels, so it works with the screen locked or in the car) ----------
-let vizStyle = ['wave', 'bars', 'circle'].includes(localStorage.getItem('mp.viz')) ? localStorage.getItem('mp.viz') : 'wave', vizEnv = 0, vizHist = new Array(64).fill(0);
+let vizStyle = ['wave', 'bars', 'circle', 'black'].includes(localStorage.getItem('mp.viz')) ? localStorage.getItem('mp.viz') : 'wave', vizEnv = 0, vizHist = new Array(64).fill(0);
 function setViz(v) { vizStyle = v; localStorage.setItem('mp.viz', v); $('waveWrap').classList.toggle('viz', v !== 'wave'); document.querySelectorAll('#vizSw button, #vfSw button').forEach(b => b.classList.toggle('on', b.dataset.v === v)); }
 document.querySelectorAll('#vizSw button, #vfSw button').forEach(b => b.onclick = e => { e.stopPropagation(); setViz(b.dataset.v); });
 setViz(vizStyle);
@@ -665,7 +696,7 @@ function drawMiniWave(d, cv, wx, t, cols) {
 // live sound analysis: a silent twin of the player feeds an analyser, so the main audio
 // is never routed through Web Audio (that keeps lock screen and car playback safe)
 let an = null;
-const vizOn = () => (vizStyle !== 'wave' && mode === 'wave') || !$('vFull').hidden;
+const vizOn = () => vizStyle !== 'black' && ((vizStyle !== 'wave' && mode === 'wave') || !$('vFull').hidden);
 function anEnsure() {
   if (an) return an;
   try {
@@ -700,6 +731,7 @@ function anLevels() {
 // 32 bands spread across the voice and music range (roughly 80 Hz to 8 kHz)
 const BANDS = Array.from({ length: 33 }, (_, k) => Math.round(2 + Math.pow(k / 32, 1.7) * 92));
 function drawViz(d, cv = wv, wx = cv.getContext('2d'), style = vizStyle) {
+  if (style === 'black') { wx.fillStyle = '#000'; wx.fillRect(0, 0, cv.width, cv.height); return; } // plain black screen: nothing moving
   anSync(false); const F = anLevels();
   const W = cv.width, H = cv.height, t = audio.currentTime || 0, cols = THEMES[theme], now = performance.now() / 1000;
   let live = null;
@@ -792,6 +824,8 @@ function drawOverview() {
 $('ovWrap').addEventListener('pointerdown', e => { if (!cur) return; const r = ov.getBoundingClientRect(); audio.currentTime = clamp((e.clientX - r.left) / r.width, 0, 1) * dur(); });
 
 // ---------- chapters ----------
+// tapping a chapter jumps there and plays
+function playFrom(t) { if (!cur) return; audio.currentTime = t; if (audio.paused) audio.play().catch(() => {}); }
 function chapterAt(t) { if (!cur) return -1; let k = -1; cur.chapters.forEach((c, i) => { if (c.t <= t + 0.01) k = i; }); return k; }
 function renderChapters() {
   const L = $('clist'); L.innerHTML = ''; if (!cur) return; const own = isOwn(cur);
@@ -801,7 +835,7 @@ function renderChapters() {
     d.innerHTML = `<div class="n">${k + 1}</div><div style="flex:1;min-width:0"><div class="t"></div><div class="tm">${short(c.t)}</div></div><button class="del add" title="Add to a playlist">+</button>${own ? '<button class="del" title="Delete">✕</button>' : ''}`;
     const tt = d.querySelector('.t'); tt.textContent = c.title;
     d.querySelector('.add').onclick = e => { e.stopPropagation(); const nx = cur.chapters[k + 1]; openAddPl({ m: cur.id, t0: c.t, t1: nx ? nx.t : null, label: `${cur.title} · ${c.title}` }); };
-    d.onclick = () => { if (tt.isContentEditable) return; audio.currentTime = c.t; };
+    d.onclick = () => { if (tt.isContentEditable) return; playFrom(c.t); };
     if (own) {
       tt.ondblclick = e => { e && e.stopPropagation && e.stopPropagation(); tt.contentEditable = 'true'; tt.focus(); document.getSelection().selectAllChildren(tt); };
       tt.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); tt.blur(); } };
@@ -837,7 +871,7 @@ function renderTranscript() {
   const frag = document.createDocumentFragment();
   cur.words.forEach((w, i) => {
     const prev = cur.words[i - 1];
-    while (ci < chStarts.length && chStarts[ci] <= w.start + 0.25) { const h = document.createElement('div'); h.className = 'ch'; const c = cur.chapters[ci]; h.textContent = `${ci + 1}. ${c.title}`; h.onclick = () => audio.currentTime = c.t; frag.appendChild(h); p = null; ci++; }
+    while (ci < chStarts.length && chStarts[ci] <= w.start + 0.25) { const h = document.createElement('div'); h.className = 'ch'; const c = cur.chapters[ci]; h.textContent = `${ci + 1}. ${c.title}`; h.onclick = () => playFrom(c.t); frag.appendChild(h); p = null; ci++; }
     if (!p || (hasLines ? w.p : (prev && w.start - prev.end > 1.1 && /[.!?]$/.test(prev.text)))) { p = document.createElement('p'); frag.appendChild(p); }
     const s = document.createElement('span'); s.className = 'w'; s.textContent = w.text; s.onclick = () => { audio.currentTime = Math.max(0, w.start - 0.05); showRepBar(i); };
     p.appendChild(s); p.appendChild(document.createTextNode(' ')); wordEls.push(s);
@@ -1391,14 +1425,52 @@ function renderFavs(L, q) {
 const dayOf = (d = new Date()) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/London' }).format(d);
 let stats = { days: {}, tracks: {} }, statSaved = 0, lastTick = 0, lastPos = -1, heard = {};
 const statKey = () => 'mp.stats.' + (user ? user.id : 'x');
-function loadStats() { try { stats = JSON.parse(localStorage.getItem(statKey())) || stats; } catch {} stats.days ||= {}; stats.tracks ||= {}; stats.plays ||= {}; statLine(); }
+function loadStats() { try { stats = JSON.parse(localStorage.getItem(statKey())) || stats; } catch {} stats.days ||= {}; stats.tracks ||= {}; stats.plays ||= {}; stats.loved ||= {}; statLine(); }
 let playCounted = null, playSecs = 0;
+// ---------- play counts and ❤️ Loved (kept in step across your devices once the memopad_listens table exists) ----------
+const LOVED = '\u0001loved', LISTENS = 'memopad_listens';
+const isLoved = t => !!(t && stats.loved && stats.loved[t.id]);
+const playsOf = t => (t && stats.plays && stats.plays[t.id]) || 0;
+let listenSync = true;
+const listenRow = id => ({ user_id: user.id, memo_id: id, plays: stats.plays[id] || 0, loved: !!stats.loved[id], updated_at: new Date().toISOString() });
+function pushListen(id) {
+  if (!listenSync || !user || !navigator.onLine) return;
+  supabase.from(LISTENS).upsert(listenRow(id)).then(({ error }) => { if (error) listenSync = false; });
+}
+async function syncListens() {
+  if (!user) return;
+  const { data, error } = await supabase.from(LISTENS).select('memo_id,plays,loved');
+  if (error || !Array.isArray(data)) { listenSync = false; return; }
+  listenSync = true; const seen = new Set(), push = [];
+  data.forEach(r => {
+    seen.add(r.memo_id); const lp = stats.plays[r.memo_id] || 0;
+    if (r.plays > lp) stats.plays[r.memo_id] = r.plays; else if (lp > r.plays) push.push(r.memo_id);
+    if (r.loved) stats.loved[r.memo_id] = 1; else delete stats.loved[r.memo_id];
+  });
+  // first time on this device: send up what it already knows
+  new Set([...Object.keys(stats.plays), ...Object.keys(stats.loved)]).forEach(id => { if (!seen.has(id) && tracks.some(t => t.id === id)) push.push(id); });
+  localStorage.setItem(statKey(), JSON.stringify(stats));
+  if (push.length) supabase.from(LISTENS).upsert(push.map(listenRow)).then(() => {});
+  renderLib(); renderLove();
+}
+function toggleLove(t) {
+  if (!t) return;
+  if (stats.loved[t.id]) delete stats.loved[t.id]; else stats.loved[t.id] = 1;
+  localStorage.setItem(statKey(), JSON.stringify(stats)); pushListen(t.id);
+  renderLib(); renderLove(); toast(isLoved(t) ? 'Added to Loved ♥' : 'Removed from Loved', false, 1500);
+}
+function renderLove() {
+  const b = $('loveBtn'), p = $('playsTag'); if (!b || !cur) return; const on = isLoved(cur), n = playsOf(cur);
+  b.classList.toggle('on', on); b.innerHTML = `${on ? IC.heartOn : IC.heart}<span>${on ? 'Loved' : 'Love'}</span>`;
+  b.setAttribute('aria-pressed', on ? 'true' : 'false');
+  p.hidden = !n; p.textContent = n === 1 ? 'Played once' : `Played ${n} times`;
+}
 function tickStats(t) {
   const now = performance.now(), dt = (now - lastTick) / 1000; lastTick = now;
   if (!cur || audio.paused || dt <= 0 || dt > 2) { lastPos = t; return; }
   const day = dayOf(); stats.days[day] = (stats.days[day] || 0) + dt; stats.tracks[cur.id] = (stats.tracks[cur.id] || 0) + dt;
   // a "play" counts once you've listened 30 seconds since opening the memo
-  if (playCounted !== cur.id) { playSecs += dt; if (playSecs >= Math.min(30, (cur.duration || 60) * 0.5)) { playCounted = cur.id; stats.plays[cur.id] = (stats.plays[cur.id] || 0) + 1; localStorage.setItem(statKey(), JSON.stringify(stats)); renderLib(); } }
+  if (playCounted !== cur.id) { playSecs += dt; if (playSecs >= Math.min(30, (cur.duration || 60) * 0.5)) { playCounted = cur.id; stats.plays[cur.id] = (stats.plays[cur.id] || 0) + 1; localStorage.setItem(statKey(), JSON.stringify(stats)); pushListen(cur.id); renderLib(); renderLove(); } }
   // a "finished listen": you heard most of the track (skips and seeks don't count)
   const d = t - lastPos; lastPos = t;
   if (d > 0 && d < 2) { heard[cur.id] = (heard[cur.id] || 0) + d; if (cur.duration && heard[cur.id] >= cur.duration * 0.85) { heard[cur.id] = -1e9; finishedTrack(cur); } }
@@ -1572,7 +1644,11 @@ $('vfClose').onclick = e => { e.stopPropagation(); closeVizFull(); };
 $('vfPlay').onclick = e => { e.stopPropagation(); togglePlay(); vfPoke(); };
 holdable($('vfPrev'), -1); holdable($('vfNext'), 1);
 ['vfPrev', 'vfNext'].forEach(id => $(id).addEventListener('click', vfPoke));
-$('vFull').addEventListener('click', e => { if (e.target.closest('button')) { vfPoke(); return; } const F = $('vFull'); if (F.classList.contains('ctl') && !audio.paused) { clearTimeout(vfHideT); F.classList.remove('ctl'); } else vfPoke(); });
+// tap the screen (anywhere that isn't a button) to pause or play
+$('vFull').addEventListener('click', e => { if (e.target.closest('button')) { vfPoke(); return; } togglePlay(); vfPoke(); });
+{ let tap = null;
+  $('waveWrap').addEventListener('pointerdown', e => { tap = vizStyle !== 'wave' && !e.target.closest('button') ? { x: e.clientX, y: e.clientY, t: performance.now() } : null; });
+  $('waveWrap').addEventListener('pointerup', e => { if (tap && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) < 8 && performance.now() - tap.t < 400) togglePlay(); tap = null; }); }
 document.addEventListener('fullscreenchange', () => { if (!fsEl() && !$('vFull').hidden) closeVizFull(); });
 addEventListener('keydown', e => { if (e.key === 'Escape' && !$('vFull').hidden) { e.preventDefault(); closeVizFull(); } });
 

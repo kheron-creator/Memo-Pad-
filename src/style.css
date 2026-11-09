@@ -527,3 +527,24 @@ body.resizing{cursor:col-resize;user-select:none}
 .item.vm .nm.editing{white-space:normal;outline:2px solid #5AA9FF;border-radius:6px;padding:0 4px;cursor:text;color:#fff}
 
 .toast .tq{display:block;font-family:var(--body);font-size:17px;font-weight:600;line-height:1.35;color:#fff;margin-bottom:6px;max-width:420px;white-space:normal}
+/* drop-down for a memo tapped while another plays */
+.vpeek{flex-basis:100%;width:100%;margin-top:10px;display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center}
+.item:has(.vpeek){flex-wrap:wrap}
+.vpk-play{display:inline-flex;align-items:center;gap:8px;border:0;border-radius:999px;background:#fff;color:#000;font:700 14px var(--head);padding:9px 18px 9px 12px;cursor:pointer}
+.vpk-play svg{width:18px;height:18px}
+.vpk-note{color:var(--mute);font-size:12px;font-weight:600}
+.vpk-ch{flex-basis:100%;display:flex;flex-direction:column;gap:2px;max-height:260px;overflow:auto}
+.vpk-ch button{display:flex;gap:10px;align-items:center;text-align:left;border:0;background:none;color:#ddd;padding:8px 6px;border-radius:10px;font:600 13px var(--body,inherit);cursor:pointer}
+.vpk-ch button:hover{background:#ffffff10}
+.vpk-ch .n{color:var(--mute);width:20px;flex:0 0 20px}.vpk-ch .tt{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.vpk-ch .tm{color:var(--mute)}
+/* ♥ Loved */
+.item.vm .vlove{flex:0 0 auto;border:0;background:none;color:#5c5c63;padding:6px;border-radius:10px;display:flex;align-items:center}
+.item.vm .vlove svg{width:18px;height:18px}
+.item.vm .vlove.on{color:#ff4d6d}
+.item.vm .vlove:hover{color:#ff4d6d}
+.chip.love{display:inline-flex;align-items:center;gap:6px}
+.chip.love svg{width:16px;height:16px}
+.chip.love.on{color:#ff4d6d;border-color:#ff4d6d66}
+.meta .plays{color:var(--mute);font-size:13px;font-weight:600}
+.cats button.lovedcat{color:#ff8fa3}
+.cats button.lovedcat.on{color:#fff}

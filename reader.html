@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Reader · MemoPad</title>
+<meta name="description" content="Paste up to 1,000 affirmations, pick a voice and hear them over a lofi beat.">
+<meta name="theme-color" content="#000000">
+<link rel="icon" type="image/png" href="/favicon-64.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Dosis:wght@400;500;600;700;800&family=Poppins:wght@500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body class="rd">
+<main class="cp">
+  <header class="top">
+    <a href="/" class="brand"><img src="/favicon-64.png" alt=""><span><b>MemoPad</b><i>Did you get the message?</i></span></a>
+    <nav class="tabs"><a href="/create.html">Create</a><a href="/reader.html" class="on">Reader</a><a href="/mix.html">Play</a></nav>
+  </header>
+  <h1>Reader</h1>
+  <p class="sub">Paste or upload up to 1,000 affirmations. Pick a voice, add a beat, press play. <span class="pilot">Pilot</span></p>
+
+  <section class="step">
+    <h2><b>1</b> Voice</h2>
+    <div class="vrow" id="vRow"></div>
+    <p class="hint" id="voiceHint"></p>
+  </section>
+
+  <section class="step">
+    <h2><b>2</b> Affirmations <span class="cnt" id="cnt"></span></h2>
+    <div id="editBox">
+      <textarea id="text" rows="8" placeholder="Paste your affirmations here, one per line. Lines starting with # become section titles. Already made your affirmations as audio (e.g. in ElevenLabs)? Upload the MP3s instead."></textarea>
+      <div class="row">
+        <label class="ghost btn"><input id="file" type="file" accept=".txt,.md,.docx,text/plain,audio/*" multiple hidden>Upload text, Word or audio</label>
+        <button id="load" class="ghost grad-text">Ready to read ✓</button>
+      </div>
+    </div>
+    <div id="readBox" hidden>
+      <div class="lines" id="lines"></div>
+      <div class="row"><button id="edit" class="ghost">Edit text</button></div>
+    </div>
+  </section>
+
+  <section class="step">
+    <h2><b>3</b> Beat</h2>
+    <div class="moods" id="presets"></div>
+    <div class="row"><input id="yt" type="text" placeholder="Or paste any YouTube link (song or playlist)" autocomplete="off"><button id="ytLoad" class="ghost">Load</button></div>
+    <div class="row"><button class="go small beatBtn" type="button">♪&nbsp;<span>Play beat</span></button><span class="hint">The beat and the voice each have their own play button.</span></div>
+    <div class="ytbox" id="ytBox" hidden><div id="ytPlayer"></div></div>
+  </section>
+  <footer><b>MemoPad</b> by Progress Today · Did you get the message?</footer>
+</main>
+
+<div class="dock" id="dock">
+  <div class="now" id="now">Press ▶ for the voice and ♪ for the beat</div>
+  <div class="dctl">
+    <button class="db" id="prev" aria-label="Previous"><svg viewBox="0 0 24 24"><path d="M6 5h2.5v14H6zM19 5.9v12.2a.8.8 0 0 1-1.2.7L9.6 12.7a.8.8 0 0 1 0-1.4l8.2-6.1a.8.8 0 0 1 1.2.7z"/></svg></button>
+    <button class="db big" id="play" aria-label="Play or pause the voice"><svg viewBox="0 0 24 24"><path class="ip" d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/><path class="ipa" d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg></button>
+    <button class="db" id="next" aria-label="Next"><svg viewBox="0 0 24 24"><path d="M15.5 5H18v14h-2.5zM5 5.9v12.2a.8.8 0 0 0 1.2.7l8.2-6.1a.8.8 0 0 0 0-1.4L6.2 5.2A.8.8 0 0 0 5 5.9z"/></svg></button>
+    <span class="pos" id="pos">0 / 0</span>
+    <button class="bb beatBtn" type="button" aria-label="Play or pause the beat">♪&nbsp;<span>Play beat</span></button>
+    <button class="db" id="more" aria-label="Settings"><svg viewBox="0 0 24 24"><path d="M4 7h10v2H4zM17 6h3v4h-3zM4 15h3v2H4zM10 14h10v4H10z" opacity=".9"/></svg></button>
+  </div>
+  <div class="dset" id="dset" hidden>
+    <label>Voice <input id="aVol" type="range" min="0" max="100" value="100"></label>
+    <label>Beat <input id="mVol" type="range" min="0" max="100" value="30"></label>
+    <div class="row">
+      <label>Speed <select id="rate"><option>0.8</option><option>0.9</option><option selected>1</option><option>1.1</option><option>1.25</option></select></label>
+      <label>Say each <select id="rep"><option value="1">once</option><option value="2">twice</option><option value="3">3×</option></select></label>
+      <label>Pause <select id="gap"><option value="0.8">short</option><option value="2" selected>medium</option><option value="4">long</option></select></label>
+      <label><input type="checkbox" id="loopAll"> Loop</label>
+    </div>
+  </div>
+</div>
+<audio id="aud" playsinline></audio>
+<script type="module" src="/src/reader.js"></script>
+</body>
+</html>

@@ -276,7 +276,7 @@ function textOf(t) { if (t._text == null) t._text = norm(t.words.map(w => w.text
 // ---------- Voice Memos style: tap a memo to open a small player right in the list ----------
 let libFold = false, foldT = 0;
 // once a memo is playing, its box folds down to a slim row with a progress line (tap the row to open it again)
-audio.addEventListener('play', () => { clearTimeout(foldT); foldT = setTimeout(() => { if (!audio.paused && !libFold && document.querySelector('#lib .vexp')) { libFold = true; renderLib(); } }, 1500); });
+audio.addEventListener('play', () => { clearTimeout(foldT); foldT = setTimeout(() => { if (!audio.paused && !libFold && document.querySelector('#lib .vexp:not(.vpk)')) { libFold = true; renderLib(); } }, 1500); });
 const IC = {
   heart: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 20.5s-7.5-4.6-9.3-9.2C1.4 7.9 3.6 4.5 7 4.5c2.1 0 3.6 1.2 5 3 1.4-1.8 2.9-3 5-3 3.4 0 5.6 3.4 4.3 6.8-1.8 4.6-9.3 9.2-9.3 9.2z"/></svg>',
   heartOn: '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 20.5s-7.5-4.6-9.3-9.2C1.4 7.9 3.6 4.5 7 4.5c2.1 0 3.6 1.2 5 3 1.4-1.8 2.9-3 5-3 3.4 0 5.6 3.4 4.3 6.8-1.8 4.6-9.3 9.2-9.3 9.2z"/></svg>',
@@ -336,7 +336,7 @@ function libRowPlayer(t) {
 }
 function updateLibRow() {
   const th = document.querySelector('#lib .vthin i'); if (th && cur) th.style.width = clamp((audio.currentTime || 0) / (dur() || 1), 0, 1) * 100 + '%';
-  const x = document.querySelector('#lib .vexp'); if (!x || !cur) return;
+  const x = document.querySelector('#lib .vexp:not(.vpk)'); if (!x || !cur) return;
   const t = audio.currentTime || 0, D = dur() || 1, pc = clamp(t / D, 0, 1) * 100 + '%';
   x.querySelector('.vbar i').style.width = pc; x.querySelector('.vbar b').style.left = pc;
   x.querySelector('.vnow').textContent = short(t); x.querySelector('.vrem').textContent = '-' + short(Math.max(0, D - t));
@@ -350,18 +350,47 @@ function markRecent(t) { if (!t) return; const R = recentMap(); R[t.id] = Date.n
 let libEditing = false, peek = null, peekT = 0;
 const canHover = matchMedia('(hover: hover) and (pointer: fine)').matches; // peek: a memo opened in the list while another keeps playing
 // the drop-down for a memo you tapped while another is playing: the music only changes when you press Play
+// get the audio ready while the memo is dropped down, so pressing Play starts it straight away (Safari and iPhone only allow sound right inside the tap)
+function prepAudio(t) {
+  if (t._readyUrl || t._prepping || t === cur) return;
+  t._prepping = (async () => {
+    try {
+      const blob = t.blob || await audioGet(t.id);
+      if (blob) { t.blob = blob; t._readyUrl = URL.createObjectURL(blob); return; }
+      const { data } = await supabase.storage.from(BUCKET).createSignedUrl(t.audio_path, 3600);
+      if (data) { t._readyUrl = data.signedUrl; t._readyAt = Date.now(); }
+    } catch { /* falls back to the normal load */ } finally { t._prepping = null; }
+  })();
+}
+// a dropped-down memo that isn't playing yet: the same player as usual; the current memo keeps playing until you press Play
 function peekBox(t) {
-  const x = document.createElement('div'); x.className = 'vpeek';
-  const ch = []; // chapters left out of the drop-down: just Play
-  x.innerHTML = `<button type="button" class="vpk-play">${IC.play}<span>Play</span></button>${audio.paused ? '' : '<span class="vpk-note">The current memo keeps playing until you press Play.</span>'}`
-    + (ch.length ? `<div class="vpk-ch">${ch.map((c, k) => `<button type="button" data-t="${c.t}"><span class="n">${k + 1}</span><span class="tt">${esc(c.title)}</span><span class="tm">${short(c.t)}</span></button>`).join('')}</div>` : '');
+  const x = document.createElement('div'); x.className = 'vexp vpk';
+  const D = t.duration || 0, saved = +localStorage.getItem('mp.pos.' + t.id) || 0;
+  let st = saved >= 5 && saved < D - 10 ? saved : 0;
+  x.innerHTML = `<div class="vbar"><i></i><b></b></div><div class="vtimes"><span class="vnow"></span><span class="vrem"></span></div>
+    <div class="vctl"><button type="button" class="vb vwave" title="Open in the full player" aria-label="Open in the full player">${IC.wave}</button><span class="vmid"><button type="button" class="vb" data-a="back" aria-label="Back 15 seconds">${IC.back}</button><button type="button" class="vb vplay" data-a="play" aria-label="Play ${esc(t.title)}">${IC.play}</button><button type="button" class="vb" data-a="fwd" aria-label="Forward 15 seconds">${IC.fwd}</button></span>${isOwn(t) ? `<button type="button" class="vb vbin" title="Delete" aria-label="Delete ${esc(t.title)}">${IC.bin}</button>` : '<span class="vb"></span>'}</div>`;
+  const show = () => { const pc = (D ? clamp(st / D, 0, 1) * 100 : 0) + '%'; x.querySelector('.vbar i').style.width = pc; x.querySelector('.vbar b').style.left = pc; x.querySelector('.vnow').textContent = short(st); x.querySelector('.vrem').textContent = '-' + short(Math.max(0, D - st)); };
+  show(); prepAudio(t);
   x.addEventListener('click', e => e.stopPropagation());
-  const go = at => {
-    peek = null; stopPlaylist(); libFold = false; if (at != null) skipResume = true;
-    select(t).then(() => { if (cur !== t) return; const start = () => { if (at != null) audio.currentTime = at; audio.play().catch(() => {}); }; audio.readyState >= 1 ? start() : audio.addEventListener('loadedmetadata', start, { once: true }); renderLib(); });
+  const go = open => {
+    clearTimeout(peekT); peek = null; stopPlaylist(); libFold = false; skipResume = true;
+    if (t._readyUrl && Date.now() - (t._readyAt || Date.now()) > 3000e3) t._readyUrl = null; // signed links last an hour
+    const ready = !!t._readyUrl;
+    const p = select(t); // with the audio ready, this swaps the track right now, inside your tap
+    if (ready) playFrom(st); else p.then(() => { if (cur === t) playFrom(st); });
+    if (open) closeLib();
+    renderLib();
   };
-  x.querySelector('.vpk-play').onclick = () => go(null);
-  x.querySelectorAll('.vpk-ch button').forEach(b => (b.onclick = () => go(+b.dataset.t)));
+  x.querySelector('.vplay').onclick = () => go(false);
+  x.querySelector('.vwave').onclick = () => go(true);
+  x.querySelector('[data-a=back]').onclick = () => { st = Math.max(0, st - 15); show(); };
+  x.querySelector('[data-a=fwd]').onclick = () => { st = Math.min(Math.max(0, D - 1), st + 15); show(); };
+  x.querySelector('.vbin')?.addEventListener('click', () => { peek = null; deleteTrack(t); });
+  const bar = x.querySelector('.vbar'); let dragging = false;
+  const seek = e => { const r = bar.getBoundingClientRect(); st = clamp((e.clientX - r.left) / r.width, 0, 1) * D; show(); };
+  bar.addEventListener('pointerdown', e => { dragging = true; bar.setPointerCapture(e.pointerId); seek(e); });
+  bar.addEventListener('pointermove', e => dragging && seek(e));
+  bar.addEventListener('pointerup', () => dragging = false);
   return x;
 }
 function renderLib() {
@@ -384,7 +413,7 @@ function renderLib() {
       d.querySelector('.vlove').onclick = e => { e.stopPropagation(); toggleLove(t); };
       // with a mouse: hover over another memo to drop it down (nothing stops playing)
       if (canHover) {
-        d.addEventListener('mouseenter', () => { clearTimeout(peekT); if (t !== cur && peek !== t) { peek = t; renderLib(); } });
+        d.addEventListener('mouseenter', () => { clearTimeout(peekT); if (t !== cur && peek !== t) { peek = t; libFold = true; renderLib(); } });
         d.addEventListener('mouseleave', () => { clearTimeout(peekT); peekT = setTimeout(() => { if (peek === t) { peek = null; renderLib(); } }, 350); });
       }
       d.onclick = e => {
@@ -392,7 +421,7 @@ function renderLib() {
         // like iPhone Voice Memos: tap opens the memo (press play yourself); tap the open one to fold it
         if (t === cur) { libFold = !libFold; peek = null; renderLib(); return; }
         // something is playing: don't stop it, just drop down this memo with a Play button
-        if (!audio.paused) { peek = peek === t ? null : t; renderLib(); return; }
+        if (!audio.paused) { peek = peek === t ? null : t; if (peek) libFold = true; renderLib(); return; }
         peek = null; stopPlaylist(); libFold = false; select(t); renderLib();
       };
       const acts = document.createElement('div'); acts.className = 'vacts';
@@ -429,6 +458,7 @@ async function select(t) {
 }
 // cached copy first (works offline), otherwise a signed URL from the private bucket
 async function loadAudio(t) {
+  if (t._readyUrl) { const u = t._readyUrl; t._readyUrl = null; setSrc(u); audio.playbackRate = speed(); resumeAt(t); return; }
   const blob = t.blob || await audioGet(t.id);
   if (cur !== t) return;
   if (blob) { t.blob = blob; setSrc(URL.createObjectURL(blob)); audio.playbackRate = speed(); resumeAt(t); return; }

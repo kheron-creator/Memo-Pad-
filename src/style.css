@@ -548,3 +548,5 @@ body.resizing{cursor:col-resize;user-select:none}
 .meta .plays{color:var(--mute);font-size:13px;font-weight:600}
 .cats button.lovedcat{color:#ff8fa3}
 .cats button.lovedcat.on{color:#fff}
+.item.vm:has(.vpk){flex-wrap:wrap;background:#ffffff0c}
+.item.vm:has(.vpk) .vacts{display:none}

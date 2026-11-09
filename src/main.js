@@ -726,7 +726,7 @@ function drawMiniWave(d, cv, wx, t, cols) {
 // live sound analysis: a silent twin of the player feeds an analyser, so the main audio
 // is never routed through Web Audio (that keeps lock screen and car playback safe)
 let an = null;
-const vizOn = () => vizStyle !== 'time' && ((vizStyle !== 'wave' && mode === 'wave') || !$('vFull').hidden);
+const vizOn = () => ((vizStyle !== 'wave' && mode === 'wave') || !$('vFull').hidden);
 function anEnsure() {
   if (an) return an;
   try {
@@ -760,37 +760,58 @@ function anLevels() {
 }
 // 32 bands spread across the voice and music range (roughly 80 Hz to 8 kHz)
 const BANDS = Array.from({ length: 33 }, (_, k) => Math.round(2 + Math.pow(k / 32, 1.7) * 92));
-// ---------- Listen Time view: today, this week, all time (on black) ----------
+// ---------- Listen Time view: all time in a glowing ring, with today / this week / this month on glass ----------
 const hm = s => { const m = Math.floor(s / 60), h = Math.floor(m / 60); return h ? `${h}h ${m % 60}m` : `${m}m`; };
+const NEON = ['#ff2d95', '#ff7a3d', '#ffd23f', '#25dd5f', '#00e5ff', '#7c4dff', '#ff2d95'];
 function listenTotals() {
-  const days = (typeof stats === 'object' && stats.days) || {}, now = new Date(), today = dayOf(now);
+  const days = (typeof stats === 'object' && stats.days) || {}, now = new Date(), today = dayOf(now), month = today.slice(0, 7);
   const mon = new Date(now); mon.setDate(now.getDate() - ((now.getDay() + 6) % 7)); // weeks start on Monday
-  const week = []; for (let i = 0; i < 7; i++) { const x = new Date(mon); x.setDate(mon.getDate() + i); const k = dayOf(x); week.push({ k, v: days[k] || 0, now: k === today }); }
-  return { today: days[today] || 0, week: week.reduce((a, b) => a + b.v, 0), all: Object.values(days).reduce((a, b) => a + b, 0), days: week };
+  let week = 0; for (let i = 0; i < 7; i++) { const x = new Date(mon); x.setDate(mon.getDate() + i); week += days[dayOf(x)] || 0; }
+  let mo = 0, all = 0; for (const [k, v] of Object.entries(days)) { all += v; if (k.startsWith(month)) mo += v; }
+  return { today: days[today] || 0, week, month: mo, all };
 }
-function drawListenTime(cv, wx, d) {
-  const W = cv.width, H = cv.height, L = listenTotals(); d = d || 1;
-  wx.fillStyle = '#000'; wx.fillRect(0, 0, W, H);
-  const big = Math.min(W / 7.5, H / 6.5), cx = W / 2;
-  wx.textAlign = 'center'; wx.textBaseline = 'alphabetic';
-  wx.fillStyle = '#8a8a90'; wx.font = `600 ${Math.round(big * 0.24)}px Poppins, system-ui, sans-serif`;
-  wx.fillText('LISTEN TIME', cx, H * 0.2);
-  [[L.today, 'Today'], [L.week, 'This week'], [L.all, 'All time']].forEach(([v, lab], i) => {
-    const x = W * (i + 0.5) / 3, y = H * 0.44;
-    wx.fillStyle = '#fff'; wx.font = `700 ${Math.round(big * (i === 0 ? 0.62 : 0.5))}px Poppins, system-ui, sans-serif`; wx.fillText(hm(v), x, y);
-    wx.fillStyle = '#8a8a90'; wx.font = `600 ${Math.round(big * 0.22)}px Poppins, system-ui, sans-serif`; wx.fillText(lab, x, y + big * 0.42);
+function glow(wx, x, y, r, col, a) { const g = wx.createRadialGradient(x, y, 0, x, y, r); g.addColorStop(0, col + Math.round(a * 255).toString(16).padStart(2, '0')); g.addColorStop(1, col + '00'); wx.fillStyle = g; wx.fillRect(x - r, y - r, r * 2, r * 2); }
+function drawListenTime(cv, wx, d, band, e, now) {
+  const W = cv.width, H = cv.height, M = Math.min(W, H), L = listenTotals(), font = (w, px) => `${w} ${Math.round(px)}px Poppins, system-ui, sans-serif`;
+  wx.fillStyle = '#05050a'; wx.fillRect(0, 0, W, H);
+  // drifting colour glows that breathe with the sound
+  const b = 0.22 + e * 0.35;
+  glow(wx, W * (0.2 + 0.08 * Math.sin(now * 0.3)), H * (0.25 + 0.06 * Math.cos(now * 0.4)), M * 0.75, '#ff2d95', b);
+  glow(wx, W * (0.82 + 0.06 * Math.cos(now * 0.35)), H * (0.7 + 0.08 * Math.sin(now * 0.27)), M * 0.8, '#00e5ff', b * 0.85);
+  glow(wx, W * 0.5, H * (0.95 + 0.04 * Math.sin(now * 0.5)), M * 0.6, '#7c4dff', b * 0.8);
+  // the ring
+  const cx = W / 2, cy = H * 0.4, r0 = M * 0.2 + e * M * 0.02, N = 90, rot = now * 0.15;
+  wx.lineCap = 'round'; wx.lineWidth = Math.max(2.5 * d, (2 * Math.PI * r0 / N) * 0.5);
+  wx.shadowBlur = 14 * d;
+  for (let k = 0; k < N; k++) {
+    const a = k / N * Math.PI * 2 - Math.PI / 2 + rot, kk = k < N / 2 ? k : N - k, len = band(kk % 32) * M * 0.14 + 3 * d, col = lerpCol(NEON, k / N);
+    wx.strokeStyle = col; wx.shadowColor = col; wx.beginPath();
+    wx.moveTo(cx + Math.cos(a) * (r0 + 4 * d), cy + Math.sin(a) * (r0 + 4 * d)); wx.lineTo(cx + Math.cos(a) * (r0 + 4 * d + len), cy + Math.sin(a) * (r0 + 4 * d + len)); wx.stroke();
+  }
+  wx.shadowBlur = 0;
+  // glass disc
+  const g = wx.createLinearGradient(cx, cy - r0, cx, cy + r0); g.addColorStop(0, '#ffffff2e'); g.addColorStop(1, '#ffffff08');
+  wx.fillStyle = g; wx.beginPath(); wx.arc(cx, cy, r0, 0, 7); wx.fill();
+  wx.strokeStyle = '#ffffff40'; wx.lineWidth = 1.2 * d; wx.stroke();
+  wx.textAlign = 'center'; wx.textBaseline = 'middle';
+  wx.fillStyle = '#ffffffb0'; wx.font = font(600, r0 * 0.15); wx.fillText('ALL TIME', cx, cy - r0 * 0.3);
+  wx.fillStyle = '#fff'; wx.shadowColor = '#ff2d95'; wx.shadowBlur = 18 * d; wx.font = font(700, r0 * (hm(L.all).length > 6 ? 0.36 : 0.44)); wx.fillText(hm(L.all), cx, cy + r0 * 0.08); wx.shadowBlur = 0;
+  wx.fillStyle = '#ffffff80'; wx.font = font(600, r0 * 0.12); wx.fillText('listening', cx, cy + r0 * 0.42);
+  // glass tiles
+  const tiles = [[L.today, 'Today', '#ff7a3d'], [L.week, 'This week', '#00e5ff'], [L.month, 'This month', '#b388ff']];
+  const pad = W * 0.05, gap = W * 0.03, tw = (W - pad * 2 - gap * 2) / 3, th = Math.min(H * 0.17, tw * 0.62), ty = Math.min(H - th - H * 0.05, cy + r0 + M * 0.2);
+  tiles.forEach(([v, lab, col], i) => {
+    const x = pad + i * (tw + gap), rad = Math.min(16 * d, th * 0.25);
+    const tg = wx.createLinearGradient(x, ty, x, ty + th); tg.addColorStop(0, '#ffffff22'); tg.addColorStop(1, '#ffffff0a');
+    wx.fillStyle = tg; rrect(wx, x, ty, tw, th, rad);
+    wx.strokeStyle = '#ffffff33'; wx.lineWidth = 1 * d; wx.beginPath(); wx.roundRect ? wx.roundRect(x, ty, tw, th, rad) : wx.rect(x, ty, tw, th); wx.stroke();
+    wx.fillStyle = col; rrect(wx, x + tw * 0.3, ty + 2 * d, tw * 0.4, 2.5 * d, 2 * d); // a little neon edge
+    wx.fillStyle = '#fff'; wx.shadowColor = col; wx.shadowBlur = 12 * d; wx.font = font(700, Math.min(th * 0.32, tw * 0.2)); wx.fillText(hm(v), x + tw / 2, ty + th * 0.45); wx.shadowBlur = 0;
+    wx.fillStyle = '#ffffffa0'; wx.font = font(600, Math.min(th * 0.15, tw * 0.1)); wx.fillText(lab, x + tw / 2, ty + th * 0.76);
   });
-  // this week, Monday to Sunday
-  const n = 7, bw = Math.min(W * 0.05, 26 * d), gap = bw * 0.9, tot = n * bw + (n - 1) * gap, x0 = cx - tot / 2, base = H * 0.82, hmax = H * 0.16;
-  const mx = Math.max(GOAL, ...L.days.map(x => x.v));
-  L.days.forEach((x, i) => {
-    const h = Math.max(x.v ? 3 * d : 2 * d, x.v / mx * hmax), bx = x0 + i * (bw + gap);
-    wx.fillStyle = x.now ? '#fff' : x.v ? '#6b6b72' : '#2a2a2e'; wx.beginPath(); wx.roundRect ? wx.roundRect(bx, base - h, bw, h, Math.min(bw / 2, 4 * d)) : wx.rect(bx, base - h, bw, h); wx.fill();
-    wx.fillStyle = x.now ? '#fff' : '#6b6b72'; wx.font = `600 ${Math.round(Math.max(10 * d, big * 0.17))}px Poppins, system-ui, sans-serif`; wx.fillText('MTWTFSS'[i], bx + bw / 2, base + big * 0.3);
-  });
+  wx.textBaseline = 'alphabetic';
 }
 function drawViz(d, cv = wv, wx = cv.getContext('2d'), style = vizStyle) {
-  if (style === 'time') { drawListenTime(cv, wx, d); return; } // black screen with your listening totals
   anSync(false); const F = anLevels();
   const W = cv.width, H = cv.height, t = audio.currentTime || 0, cols = THEMES[theme], now = performance.now() / 1000;
   let live = null;
@@ -801,6 +822,7 @@ function drawViz(d, cv = wv, wx = cv.getContext('2d'), style = vizStyle) {
   wx.clearRect(0, 0, W, H); wx.fillStyle = '#0b0b0d'; wx.fillRect(0, 0, W, H);
   const cx = W / 2, cy = H / 2, M = Math.min(W, H), e = vizEnv;
   const band = live ? (k => Math.max(0.03, Math.min(1, live[k % 32] * 1.15))) : k => { const N = 32, f = k / N; return Math.max(0.03, e * (0.5 + 0.5 * Math.sin(k * 0.9 + now * 4.2 + vizHist[k % 64] * 7)) * (1 - f * 0.55) + vizHist[Math.min(63, k)] * 0.25); };
+  if (style === 'time') { drawListenTime(cv, wx, d, band, e, now); return; } // your listening totals, moving with the sound
   if (style === 'bars') {
     const N = 32, gap = 3 * d, bw = Math.min(18 * d, (W * 0.86 / (N * 2)) - gap), x0 = cx - (N * (bw + gap));
     for (let k = 0; k < N; k++) {

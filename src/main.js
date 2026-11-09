@@ -347,12 +347,13 @@ const recentKey = () => 'mp.recent.' + (user ? user.id : 'x');
 let _recent = null, recentSnap = null; // the list order only changes when you pick another memo, so the one playing stays put
 function recentMap() { if (!_recent) { try { _recent = JSON.parse(localStorage.getItem(recentKey())) || {}; } catch { _recent = {}; } } return _recent; }
 function markRecent(t) { if (!t) return; const R = recentMap(); R[t.id] = Date.now(); try { localStorage.setItem(recentKey(), JSON.stringify(R)); } catch {} }
-let libEditing = false, peek = null; // peek: a memo opened in the list while another keeps playing
+let libEditing = false, peek = null, peekT = 0;
+const canHover = matchMedia('(hover: hover) and (pointer: fine)').matches; // peek: a memo opened in the list while another keeps playing
 // the drop-down for a memo you tapped while another is playing: the music only changes when you press Play
 function peekBox(t) {
   const x = document.createElement('div'); x.className = 'vpeek';
   const ch = t.chapters && t.chapters.length > 1 ? t.chapters : [];
-  x.innerHTML = `<button type="button" class="vpk-play">${IC.play}<span>Play</span></button><span class="vpk-note">The current memo keeps playing until you press Play.</span>`
+  x.innerHTML = `<button type="button" class="vpk-play">${IC.play}<span>Play</span></button>${audio.paused ? '' : '<span class="vpk-note">The current memo keeps playing until you press Play.</span>'}`
     + (ch.length ? `<div class="vpk-ch">${ch.map((c, k) => `<button type="button" data-t="${c.t}"><span class="n">${k + 1}</span><span class="tt">${esc(c.title)}</span><span class="tm">${short(c.t)}</span></button>`).join('')}</div>` : '');
   x.addEventListener('click', e => e.stopPropagation());
   const go = at => {
@@ -381,7 +382,13 @@ function renderLib() {
       const tags = [t.category ? `<span class="cat">${esc(t.category)}</span>` : '', isOwn(t) && t.is_public ? '<span class="sh">public</span>' : '', offline.has(t.id) ? '<span class="sh">offline</span>' : '', txing === t ? '<span class="sh">transcribing…</span>' : txQueue.includes(t) ? '<span class="sh">waiting</span>' : ''].join('');
       d.innerHTML = `<div class="vmain"><div class="nm">${esc(t.title)}</div><div class="mt"><span>${when(t.added)}</span>${playsOf(t) ? `<span class="plays" title="Times played">▶ ${playsOf(t)}</span>` : ''}${t.words.length ? txIcon : ''}${tags}</div></div><button type="button" class="vlove${isLoved(t) ? ' on' : ''}" aria-label="${isLoved(t) ? 'Remove from Loved' : 'Love this memo'}" title="${isLoved(t) ? 'Remove from Loved' : 'Love this memo'}">${isLoved(t) ? IC.heartOn : IC.heart}</button><div class="vdur">${short(t.duration)}</div>`;
       d.querySelector('.vlove').onclick = e => { e.stopPropagation(); toggleLove(t); };
+      // with a mouse: hover over another memo to drop it down (nothing stops playing)
+      if (canHover) {
+        d.addEventListener('mouseenter', () => { clearTimeout(peekT); if (t !== cur && peek !== t) { peek = t; renderLib(); } });
+        d.addEventListener('mouseleave', () => { clearTimeout(peekT); peekT = setTimeout(() => { if (peek === t) { peek = null; renderLib(); } }, 350); });
+      }
       d.onclick = e => {
+        if (canHover && t !== cur && peek === t && !audio.paused) return; // already dropped down by hovering
         // like iPhone Voice Memos: tap opens the memo (press play yourself); tap the open one to fold it
         if (t === cur) { libFold = !libFold; peek = null; renderLib(); return; }
         // something is playing: don't stop it, just drop down this memo with a Play button
@@ -1637,7 +1644,11 @@ $('vfClose').onclick = e => { e.stopPropagation(); closeVizFull(); };
 $('vfPlay').onclick = e => { e.stopPropagation(); togglePlay(); vfPoke(); };
 holdable($('vfPrev'), -1); holdable($('vfNext'), 1);
 ['vfPrev', 'vfNext'].forEach(id => $(id).addEventListener('click', vfPoke));
-$('vFull').addEventListener('click', e => { if (e.target.closest('button')) { vfPoke(); return; } const F = $('vFull'); if (F.classList.contains('ctl') && !audio.paused) { clearTimeout(vfHideT); F.classList.remove('ctl'); } else vfPoke(); });
+// tap the screen (anywhere that isn't a button) to pause or play
+$('vFull').addEventListener('click', e => { if (e.target.closest('button')) { vfPoke(); return; } togglePlay(); vfPoke(); });
+{ let tap = null;
+  $('waveWrap').addEventListener('pointerdown', e => { tap = vizStyle !== 'wave' && !e.target.closest('button') ? { x: e.clientX, y: e.clientY, t: performance.now() } : null; });
+  $('waveWrap').addEventListener('pointerup', e => { if (tap && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) < 8 && performance.now() - tap.t < 400) togglePlay(); tap = null; }); }
 document.addEventListener('fullscreenchange', () => { if (!fsEl() && !$('vFull').hidden) closeVizFull(); });
 addEventListener('keydown', e => { if (e.key === 'Escape' && !$('vFull').hidden) { e.preventDefault(); closeVizFull(); } });
 

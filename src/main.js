@@ -107,6 +107,7 @@ async function start(u) {
   renderCats(); renderLib(); if (!openDeep()) { if (tracks[0]) select(tracks[0]); else showEmpty(); }
   requestAnimationFrame(loop);
   await refresh();
+  syncListens();
   importSharedPlaylist();
   if (sessionStorage.getItem('mp.deep') && !openDeep()) { sessionStorage.removeItem('mp.deep'); toast('That memo is not shared with you, or it was removed.', true); }
   refreshStorage();
@@ -265,8 +266,8 @@ function allCats() {
 }
 function renderCats() {
   const C = $('cats'); C.innerHTML = '';
-  ['', ...allCats()].forEach(c => {
-    const b = document.createElement('button'); b.textContent = c || 'All'; b.className = c === catFilter ? 'on' : '';
+  ['', LOVED, ...allCats()].forEach(c => {
+    const b = document.createElement('button'); b.textContent = c === LOVED ? '♥ Loved' : c || 'All'; b.className = (c === catFilter ? 'on' : '') + (c === LOVED ? ' lovedcat' : '');
     b.onclick = () => { catFilter = c; renderCats(); renderLib(); }; C.appendChild(b);
   });
 }
@@ -277,6 +278,8 @@ let libFold = false, foldT = 0;
 // once a memo is playing, its box folds down to a slim row with a progress line (tap the row to open it again)
 audio.addEventListener('play', () => { clearTimeout(foldT); foldT = setTimeout(() => { if (!audio.paused && !libFold && document.querySelector('#lib .vexp')) { libFold = true; renderLib(); } }, 1500); });
 const IC = {
+  heart: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 20.5s-7.5-4.6-9.3-9.2C1.4 7.9 3.6 4.5 7 4.5c2.1 0 3.6 1.2 5 3 1.4-1.8 2.9-3 5-3 3.4 0 5.6 3.4 4.3 6.8-1.8 4.6-9.3 9.2-9.3 9.2z"/></svg>',
+  heartOn: '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 20.5s-7.5-4.6-9.3-9.2C1.4 7.9 3.6 4.5 7 4.5c2.1 0 3.6 1.2 5 3 1.4-1.8 2.9-3 5-3 3.4 0 5.6 3.4 4.3 6.8-1.8 4.6-9.3 9.2-9.3 9.2z"/></svg>',
   wave: '<svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><rect x="3" y="10" width="2" height="4" rx="1"/><rect x="7" y="7" width="2" height="10" rx="1"/><rect x="11" y="4" width="2" height="16" rx="1"/><rect x="15" y="8" width="2" height="8" rx="1"/><rect x="19" y="10.5" width="2" height="3" rx="1"/></svg>',
   back: '<svg viewBox="0 0 52 52" width="30" height="30" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round"><path d="M26 9a17 17 0 1 1-15.6 10.2"/><path d="M26 3v12l-8-6z" fill="currentColor" stroke="none"/><text x="26" y="33" font-size="15" font-weight="800" text-anchor="middle" fill="currentColor" stroke="none" font-family="Poppins">15</text></svg>',
   fwd: '<svg viewBox="0 0 52 52" width="30" height="30" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round"><path d="M26 9a17 17 0 1 0 15.6 10.2"/><path d="M26 3v12l8-6z" fill="currentColor" stroke="none"/><text x="26" y="33" font-size="15" font-weight="800" text-anchor="middle" fill="currentColor" stroke="none" font-family="Poppins">15</text></svg>',
@@ -364,7 +367,7 @@ function renderLib() {
   if (libEditing || document.querySelector('#lib .vmenu')) return;
   const L = $('lib'); L.innerHTML = '';
   const q = norm($('libq').value.trim());
-  const ok = t => (!catFilter || t.category === catFilter) && (!q || norm(t.title).includes(q) || textOf(t).includes(q));
+  const ok = t => (!catFilter || (catFilter === LOVED ? isLoved(t) : t.category === catFilter)) && (!q || norm(t.title).includes(q) || textOf(t).includes(q));
   const R = recentSnap || (recentSnap = { ...recentMap() }), byRecent = (a, b) => (R[b.id] || 0) - (R[a.id] || 0);
   const mine = tracks.filter(t => isOwn(t) && ok(t)).sort(byRecent), shared = tracks.filter(t => !isOwn(t) && ok(t)).sort(byRecent);
   const when = ms => { const d = new Date(ms), now = new Date(), day = 864e5, d0 = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
@@ -376,7 +379,8 @@ function renderLib() {
     list.forEach(t => {
       const d = document.createElement('div'); d._t = t; d.className = 'item vm' + (t === cur ? ' on' : '') + (t === cur && !audio.paused ? ' playing' : '');
       const tags = [t.category ? `<span class="cat">${esc(t.category)}</span>` : '', isOwn(t) && t.is_public ? '<span class="sh">public</span>' : '', offline.has(t.id) ? '<span class="sh">offline</span>' : '', txing === t ? '<span class="sh">transcribing…</span>' : txQueue.includes(t) ? '<span class="sh">waiting</span>' : ''].join('');
-      d.innerHTML = `<div class="vmain"><div class="nm">${esc(t.title)}</div><div class="mt"><span>${when(t.added)}</span>${stats.plays && stats.plays[t.id] ? `<span class="plays" title="Times played">▶ ${stats.plays[t.id]}</span>` : ''}${t.words.length ? txIcon : ''}${tags}</div></div><div class="vdur">${short(t.duration)}</div>`;
+      d.innerHTML = `<div class="vmain"><div class="nm">${esc(t.title)}</div><div class="mt"><span>${when(t.added)}</span>${playsOf(t) ? `<span class="plays" title="Times played">▶ ${playsOf(t)}</span>` : ''}${t.words.length ? txIcon : ''}${tags}</div></div><button type="button" class="vlove${isLoved(t) ? ' on' : ''}" aria-label="${isLoved(t) ? 'Remove from Loved' : 'Love this memo'}" title="${isLoved(t) ? 'Remove from Loved' : 'Love this memo'}">${isLoved(t) ? IC.heartOn : IC.heart}</button><div class="vdur">${short(t.duration)}</div>`;
+      d.querySelector('.vlove').onclick = e => { e.stopPropagation(); toggleLove(t); };
       d.onclick = e => {
         // like iPhone Voice Memos: tap opens the memo (press play yourself); tap the open one to fold it
         if (t === cur) { libFold = !libFold; peek = null; renderLib(); return; }
@@ -398,7 +402,7 @@ function renderLib() {
   section('Shared with you', shared);
   renderFavs(L, q);
   renderPlaylists(L, q);
-  if (!mine.length && !shared.length && !L.querySelector('.pl, .fav')) L.innerHTML = `<div class="none">${tracks.length ? 'Nothing matches.' : 'No memos yet. Add your first one above.'}</div>`;
+  if (!mine.length && !shared.length && !L.querySelector('.pl, .fav')) L.innerHTML = `<div class="none">${catFilter === LOVED && !q ? 'No loved memos yet. Tap the ♡ next to a memo to add it here.' : tracks.length ? 'Nothing matches.' : 'No memos yet. Add your first one above.'}</div>`;
 }
 function showEmpty() { cur = null; $('emptycard').style.display = 'flex'; setSrc(null); $('clist').innerHTML = ''; drawOverview(); }
 function setSrc(u) { if (srcUrl && srcUrl.startsWith('blob:')) URL.revokeObjectURL(srcUrl); srcUrl = u; if (u) audio.src = u; else audio.removeAttribute('src'); }
@@ -491,6 +495,7 @@ function renderMeta() {
   $('catBtn').disabled = !own; $('catBtn').hidden = !own && !t.category;
   $('shareWrap').hidden = !own; $('shareTog').checked = !!t.is_shared;
   $('roTag').hidden = own;
+  renderLove();
 }
 $('ttl').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); } });
 $('ttl').addEventListener('blur', () => { if (!cur || !isOwn(cur)) return; const v = $('ttl').textContent.trim(); if (!v) { $('ttl').textContent = cur.title; return; } if (v !== cur.title) { cur.title = v; save(); renderLib(); } });
@@ -537,6 +542,7 @@ $('shareTog').onchange = () => {
   renderLib();
 };
 // category picker
+$('loveBtn').onclick = () => toggleLove(cur);
 $('catBtn').onclick = () => { if (!cur || !isOwn(cur)) return; renderCatPick(); $('catDlg').classList.add('open'); };
 function renderCatPick() {
   const P = $('catPick'); P.innerHTML = '';
@@ -1412,14 +1418,52 @@ function renderFavs(L, q) {
 const dayOf = (d = new Date()) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/London' }).format(d);
 let stats = { days: {}, tracks: {} }, statSaved = 0, lastTick = 0, lastPos = -1, heard = {};
 const statKey = () => 'mp.stats.' + (user ? user.id : 'x');
-function loadStats() { try { stats = JSON.parse(localStorage.getItem(statKey())) || stats; } catch {} stats.days ||= {}; stats.tracks ||= {}; stats.plays ||= {}; statLine(); }
+function loadStats() { try { stats = JSON.parse(localStorage.getItem(statKey())) || stats; } catch {} stats.days ||= {}; stats.tracks ||= {}; stats.plays ||= {}; stats.loved ||= {}; statLine(); }
 let playCounted = null, playSecs = 0;
+// ---------- play counts and ❤️ Loved (kept in step across your devices once the memopad_listens table exists) ----------
+const LOVED = '\u0001loved', LISTENS = 'memopad_listens';
+const isLoved = t => !!(t && stats.loved && stats.loved[t.id]);
+const playsOf = t => (t && stats.plays && stats.plays[t.id]) || 0;
+let listenSync = true;
+const listenRow = id => ({ user_id: user.id, memo_id: id, plays: stats.plays[id] || 0, loved: !!stats.loved[id], updated_at: new Date().toISOString() });
+function pushListen(id) {
+  if (!listenSync || !user || !navigator.onLine) return;
+  supabase.from(LISTENS).upsert(listenRow(id)).then(({ error }) => { if (error) listenSync = false; });
+}
+async function syncListens() {
+  if (!user) return;
+  const { data, error } = await supabase.from(LISTENS).select('memo_id,plays,loved');
+  if (error || !Array.isArray(data)) { listenSync = false; return; }
+  listenSync = true; const seen = new Set(), push = [];
+  data.forEach(r => {
+    seen.add(r.memo_id); const lp = stats.plays[r.memo_id] || 0;
+    if (r.plays > lp) stats.plays[r.memo_id] = r.plays; else if (lp > r.plays) push.push(r.memo_id);
+    if (r.loved) stats.loved[r.memo_id] = 1; else delete stats.loved[r.memo_id];
+  });
+  // first time on this device: send up what it already knows
+  new Set([...Object.keys(stats.plays), ...Object.keys(stats.loved)]).forEach(id => { if (!seen.has(id) && tracks.some(t => t.id === id)) push.push(id); });
+  localStorage.setItem(statKey(), JSON.stringify(stats));
+  if (push.length) supabase.from(LISTENS).upsert(push.map(listenRow)).then(() => {});
+  renderLib(); renderLove();
+}
+function toggleLove(t) {
+  if (!t) return;
+  if (stats.loved[t.id]) delete stats.loved[t.id]; else stats.loved[t.id] = 1;
+  localStorage.setItem(statKey(), JSON.stringify(stats)); pushListen(t.id);
+  renderLib(); renderLove(); toast(isLoved(t) ? 'Added to Loved ♥' : 'Removed from Loved', false, 1500);
+}
+function renderLove() {
+  const b = $('loveBtn'), p = $('playsTag'); if (!b || !cur) return; const on = isLoved(cur), n = playsOf(cur);
+  b.classList.toggle('on', on); b.innerHTML = `${on ? IC.heartOn : IC.heart}<span>${on ? 'Loved' : 'Love'}</span>`;
+  b.setAttribute('aria-pressed', on ? 'true' : 'false');
+  p.hidden = !n; p.textContent = n === 1 ? 'Played once' : `Played ${n} times`;
+}
 function tickStats(t) {
   const now = performance.now(), dt = (now - lastTick) / 1000; lastTick = now;
   if (!cur || audio.paused || dt <= 0 || dt > 2) { lastPos = t; return; }
   const day = dayOf(); stats.days[day] = (stats.days[day] || 0) + dt; stats.tracks[cur.id] = (stats.tracks[cur.id] || 0) + dt;
   // a "play" counts once you've listened 30 seconds since opening the memo
-  if (playCounted !== cur.id) { playSecs += dt; if (playSecs >= Math.min(30, (cur.duration || 60) * 0.5)) { playCounted = cur.id; stats.plays[cur.id] = (stats.plays[cur.id] || 0) + 1; localStorage.setItem(statKey(), JSON.stringify(stats)); renderLib(); } }
+  if (playCounted !== cur.id) { playSecs += dt; if (playSecs >= Math.min(30, (cur.duration || 60) * 0.5)) { playCounted = cur.id; stats.plays[cur.id] = (stats.plays[cur.id] || 0) + 1; localStorage.setItem(statKey(), JSON.stringify(stats)); pushListen(cur.id); renderLib(); renderLove(); } }
   // a "finished listen": you heard most of the track (skips and seeks don't count)
   const d = t - lastPos; lastPos = t;
   if (d > 0 && d < 2) { heard[cur.id] = (heard[cur.id] || 0) + d; if (cur.duration && heard[cur.id] >= cur.duration * 0.85) { heard[cur.id] = -1e9; finishedTrack(cur); } }

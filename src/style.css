@@ -537,3 +537,14 @@ body.resizing{cursor:col-resize;user-select:none}
 .vpk-ch button{display:flex;gap:10px;align-items:center;text-align:left;border:0;background:none;color:#ddd;padding:8px 6px;border-radius:10px;font:600 13px var(--body,inherit);cursor:pointer}
 .vpk-ch button:hover{background:#ffffff10}
 .vpk-ch .n{color:var(--mute);width:20px;flex:0 0 20px}.vpk-ch .tt{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.vpk-ch .tm{color:var(--mute)}
+/* ♥ Loved */
+.item.vm .vlove{flex:0 0 auto;border:0;background:none;color:#5c5c63;padding:6px;border-radius:10px;display:flex;align-items:center}
+.item.vm .vlove svg{width:18px;height:18px}
+.item.vm .vlove.on{color:#ff4d6d}
+.item.vm .vlove:hover{color:#ff4d6d}
+.chip.love{display:inline-flex;align-items:center;gap:6px}
+.chip.love svg{width:16px;height:16px}
+.chip.love.on{color:#ff4d6d;border-color:#ff4d6d66}
+.meta .plays{color:var(--mute);font-size:13px;font-weight:600}
+.cats button.lovedcat{color:#ff8fa3}
+.cats button.lovedcat.on{color:#fff}

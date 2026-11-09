@@ -352,7 +352,7 @@ const canHover = matchMedia('(hover: hover) and (pointer: fine)').matches; // pe
 // the drop-down for a memo you tapped while another is playing: the music only changes when you press Play
 function peekBox(t) {
   const x = document.createElement('div'); x.className = 'vpeek';
-  const ch = t.chapters && t.chapters.length > 1 ? t.chapters : [];
+  const ch = []; // chapters left out of the drop-down: just Play
   x.innerHTML = `<button type="button" class="vpk-play">${IC.play}<span>Play</span></button>${audio.paused ? '' : '<span class="vpk-note">The current memo keeps playing until you press Play.</span>'}`
     + (ch.length ? `<div class="vpk-ch">${ch.map((c, k) => `<button type="button" data-t="${c.t}"><span class="n">${k + 1}</span><span class="tt">${esc(c.title)}</span><span class="tm">${short(c.t)}</span></button>`).join('')}</div>` : '');
   x.addEventListener('click', e => e.stopPropagation());
@@ -444,7 +444,7 @@ function resumeAt(t) {
   if (skipResume) { skipResume = false; return; }
   if (pl) return;
   const p = +localStorage.getItem('mp.pos.' + t.id) || 0; if (p < 5 || p > (t.duration || 1e9) - 10) return;
-  const go = () => { if (cur === t) { audio.currentTime = p; toast('Carrying on from ' + short(p) + '.', false, 2500); } };
+  const go = () => { if (cur === t && pendingSeek == null && audio.currentTime < 1) { audio.currentTime = p; toast('Carrying on from ' + short(p) + '.', false, 2500); } };
   audio.readyState >= 1 ? go() : audio.addEventListener('loadedmetadata', go, { once: true });
 }
 let posSaved = 0;
@@ -605,8 +605,8 @@ audio.onerror = () => { if (cur && audio.src) status('This audio could not play.
 const jump = d => { if (cur) audio.currentTime = clamp(audio.currentTime + d, 0, audio.duration || cur.duration); };
 $('back').onclick = () => jump(-15); $('fwd').onclick = () => jump(15);
 // skip through chapters like songs
-function prevChapter() { if (!cur) return; const t = audio.currentTime, k = chapterAt(t); if (k < 0) return; const c = cur.chapters[k]; audio.currentTime = (t - c.t > 3 || k === 0) ? c.t : cur.chapters[k - 1].t; }
-function nextChapter() { if (!cur) return; const k = chapterAt(audio.currentTime); const n = cur.chapters[k + 1]; if (n) audio.currentTime = n.t; }
+function prevChapter() { if (!cur) return; const t = audio.currentTime, k = chapterAt(t); if (k < 0) return; const c = cur.chapters[k]; playFrom((t - c.t > 3 || k === 0) ? c.t : cur.chapters[k - 1].t); }
+function nextChapter() { if (!cur) return; const k = chapterAt(audio.currentTime); const n = cur.chapters[k + 1]; if (n) playFrom(n.t); }
 // one press = next/previous affirmation; two quick presses = next/previous chapter
 function prevAff() { const t = audio.currentTime, [j] = sentenceAt(Math.max(0, activeWord(t))); const [pj] = t - sentStart(j) > 1.5 ? [j] : sentenceAt(Math.max(0, j - 1)); audio.currentTime = sentStart(pj); }
 function nextAff() { const [, e] = sentenceAt(Math.max(0, activeWord(audio.currentTime))); if (e + 1 < cur.words.length) audio.currentTime = sentStart(sentenceAt(e + 1)[0]); }
@@ -825,7 +825,20 @@ $('ovWrap').addEventListener('pointerdown', e => { if (!cur) return; const r = o
 
 // ---------- chapters ----------
 // tapping a chapter jumps there and plays
-function playFrom(t) { if (!cur) return; audio.currentTime = t; if (audio.paused) audio.play().catch(() => {}); }
+// works from silence too: starts playback straight away (iPhone needs that inside the tap), then lands on the spot once the audio is ready
+let pendingSeek = null;
+function seekTo(t) {
+  if (!cur) return; pendingSeek = t;
+  try { audio.currentTime = t; } catch { /* not loaded yet */ }
+  if (audio.readyState >= 1 && Math.abs(audio.currentTime - t) < 0.5) { pendingSeek = null; return; }
+  const land = () => { if (pendingSeek == null) return; const want = pendingSeek; pendingSeek = null; audio.currentTime = want; };
+  audio.addEventListener('loadedmetadata', land, { once: true }); audio.addEventListener('canplay', land, { once: true });
+}
+function playFrom(t) {
+  if (!cur || !audio.src) return;
+  seekTo(t);
+  if (audio.paused) audio.play().catch(err => status('Tap play again to start (' + err.message + ').', true));
+}
 function chapterAt(t) { if (!cur) return -1; let k = -1; cur.chapters.forEach((c, i) => { if (c.t <= t + 0.01) k = i; }); return k; }
 function renderChapters() {
   const L = $('clist'); L.innerHTML = ''; if (!cur) return; const own = isOwn(cur);

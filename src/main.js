@@ -344,7 +344,22 @@ const recentKey = () => 'mp.recent.' + (user ? user.id : 'x');
 let _recent = null, recentSnap = null; // the list order only changes when you pick another memo, so the one playing stays put
 function recentMap() { if (!_recent) { try { _recent = JSON.parse(localStorage.getItem(recentKey())) || {}; } catch { _recent = {}; } } return _recent; }
 function markRecent(t) { if (!t) return; const R = recentMap(); R[t.id] = Date.now(); try { localStorage.setItem(recentKey(), JSON.stringify(R)); } catch {} }
-let libEditing = false;
+let libEditing = false, peek = null; // peek: a memo opened in the list while another keeps playing
+// the drop-down for a memo you tapped while another is playing: the music only changes when you press Play
+function peekBox(t) {
+  const x = document.createElement('div'); x.className = 'vpeek';
+  const ch = t.chapters && t.chapters.length > 1 ? t.chapters : [];
+  x.innerHTML = `<button type="button" class="vpk-play">${IC.play}<span>Play</span></button><span class="vpk-note">The current memo keeps playing until you press Play.</span>`
+    + (ch.length ? `<div class="vpk-ch">${ch.map((c, k) => `<button type="button" data-t="${c.t}"><span class="n">${k + 1}</span><span class="tt">${esc(c.title)}</span><span class="tm">${short(c.t)}</span></button>`).join('')}</div>` : '');
+  x.addEventListener('click', e => e.stopPropagation());
+  const go = at => {
+    peek = null; stopPlaylist(); libFold = false; if (at != null) skipResume = true;
+    select(t).then(() => { if (cur !== t) return; const start = () => { if (at != null) audio.currentTime = at; audio.play().catch(() => {}); }; audio.readyState >= 1 ? start() : audio.addEventListener('loadedmetadata', start, { once: true }); renderLib(); });
+  };
+  x.querySelector('.vpk-play').onclick = () => go(null);
+  x.querySelectorAll('.vpk-ch button').forEach(b => (b.onclick = () => go(+b.dataset.t)));
+  return x;
+}
 function renderLib() {
   if (libEditing || document.querySelector('#lib .vmenu')) return;
   const L = $('lib'); L.innerHTML = '';
@@ -364,8 +379,10 @@ function renderLib() {
       d.innerHTML = `<div class="vmain"><div class="nm">${esc(t.title)}</div><div class="mt"><span>${when(t.added)}</span>${stats.plays && stats.plays[t.id] ? `<span class="plays" title="Times played">▶ ${stats.plays[t.id]}</span>` : ''}${t.words.length ? txIcon : ''}${tags}</div></div><div class="vdur">${short(t.duration)}</div>`;
       d.onclick = e => {
         // like iPhone Voice Memos: tap opens the memo (press play yourself); tap the open one to fold it
-        if (t === cur) { libFold = !libFold; renderLib(); return; }
-        stopPlaylist(); libFold = false; select(t); renderLib();
+        if (t === cur) { libFold = !libFold; peek = null; renderLib(); return; }
+        // something is playing: don't stop it, just drop down this memo with a Play button
+        if (!audio.paused) { peek = peek === t ? null : t; renderLib(); return; }
+        peek = null; stopPlaylist(); libFold = false; select(t); renderLib();
       };
       const acts = document.createElement('div'); acts.className = 'vacts';
       { const a = document.createElement('button'); a.className = 'idel iadd'; a.title = 'Add to a playlist'; a.setAttribute('aria-label', 'Add ' + t.title + ' to a playlist'); a.textContent = '+'; a.onclick = e => { e.stopPropagation(); openAddPl({ m: t.id, label: t.title }); }; acts.appendChild(a); }
@@ -373,6 +390,7 @@ function renderLib() {
       d.appendChild(acts);
       if (t === cur && !libFold) { d.appendChild(libMoreBtn(t, d)); d.appendChild(libRowPlayer(t)); }
       else if (t === cur) { const th = document.createElement('div'); th.className = 'vthin'; th.innerHTML = '<i></i>'; d.appendChild(th); }
+      if (t === peek && t !== cur) d.appendChild(peekBox(t));
       L.appendChild(d);
     });
   };
@@ -651,7 +669,7 @@ function sizeCanvas(c) { const r = c.getBoundingClientRect(), d = devicePixelRat
 const PX_PER_SEC = () => wv.width / 7.5; // about 7.5 seconds visible, like a voice memo
 function rrect(ctx, x, y, w, h, r) { ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(x, y, w, h, r); else ctx.rect(x, y, w, h); ctx.fill(); }
 // ---------- visualiser styles (driven by the memo's own sound levels, so it works with the screen locked or in the car) ----------
-let vizStyle = ['wave', 'bars', 'circle'].includes(localStorage.getItem('mp.viz')) ? localStorage.getItem('mp.viz') : 'wave', vizEnv = 0, vizHist = new Array(64).fill(0);
+let vizStyle = ['wave', 'bars', 'circle', 'black'].includes(localStorage.getItem('mp.viz')) ? localStorage.getItem('mp.viz') : 'wave', vizEnv = 0, vizHist = new Array(64).fill(0);
 function setViz(v) { vizStyle = v; localStorage.setItem('mp.viz', v); $('waveWrap').classList.toggle('viz', v !== 'wave'); document.querySelectorAll('#vizSw button, #vfSw button').forEach(b => b.classList.toggle('on', b.dataset.v === v)); }
 document.querySelectorAll('#vizSw button, #vfSw button').forEach(b => b.onclick = e => { e.stopPropagation(); setViz(b.dataset.v); });
 setViz(vizStyle);
@@ -665,7 +683,7 @@ function drawMiniWave(d, cv, wx, t, cols) {
 // live sound analysis: a silent twin of the player feeds an analyser, so the main audio
 // is never routed through Web Audio (that keeps lock screen and car playback safe)
 let an = null;
-const vizOn = () => (vizStyle !== 'wave' && mode === 'wave') || !$('vFull').hidden;
+const vizOn = () => vizStyle !== 'black' && ((vizStyle !== 'wave' && mode === 'wave') || !$('vFull').hidden);
 function anEnsure() {
   if (an) return an;
   try {
@@ -700,6 +718,7 @@ function anLevels() {
 // 32 bands spread across the voice and music range (roughly 80 Hz to 8 kHz)
 const BANDS = Array.from({ length: 33 }, (_, k) => Math.round(2 + Math.pow(k / 32, 1.7) * 92));
 function drawViz(d, cv = wv, wx = cv.getContext('2d'), style = vizStyle) {
+  if (style === 'black') { wx.fillStyle = '#000'; wx.fillRect(0, 0, cv.width, cv.height); return; } // plain black screen: nothing moving
   anSync(false); const F = anLevels();
   const W = cv.width, H = cv.height, t = audio.currentTime || 0, cols = THEMES[theme], now = performance.now() / 1000;
   let live = null;
@@ -792,6 +811,8 @@ function drawOverview() {
 $('ovWrap').addEventListener('pointerdown', e => { if (!cur) return; const r = ov.getBoundingClientRect(); audio.currentTime = clamp((e.clientX - r.left) / r.width, 0, 1) * dur(); });
 
 // ---------- chapters ----------
+// tapping a chapter jumps there and plays
+function playFrom(t) { if (!cur) return; audio.currentTime = t; if (audio.paused) audio.play().catch(() => {}); }
 function chapterAt(t) { if (!cur) return -1; let k = -1; cur.chapters.forEach((c, i) => { if (c.t <= t + 0.01) k = i; }); return k; }
 function renderChapters() {
   const L = $('clist'); L.innerHTML = ''; if (!cur) return; const own = isOwn(cur);
@@ -801,7 +822,7 @@ function renderChapters() {
     d.innerHTML = `<div class="n">${k + 1}</div><div style="flex:1;min-width:0"><div class="t"></div><div class="tm">${short(c.t)}</div></div><button class="del add" title="Add to a playlist">+</button>${own ? '<button class="del" title="Delete">✕</button>' : ''}`;
     const tt = d.querySelector('.t'); tt.textContent = c.title;
     d.querySelector('.add').onclick = e => { e.stopPropagation(); const nx = cur.chapters[k + 1]; openAddPl({ m: cur.id, t0: c.t, t1: nx ? nx.t : null, label: `${cur.title} · ${c.title}` }); };
-    d.onclick = () => { if (tt.isContentEditable) return; audio.currentTime = c.t; };
+    d.onclick = () => { if (tt.isContentEditable) return; playFrom(c.t); };
     if (own) {
       tt.ondblclick = e => { e && e.stopPropagation && e.stopPropagation(); tt.contentEditable = 'true'; tt.focus(); document.getSelection().selectAllChildren(tt); };
       tt.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); tt.blur(); } };
@@ -837,7 +858,7 @@ function renderTranscript() {
   const frag = document.createDocumentFragment();
   cur.words.forEach((w, i) => {
     const prev = cur.words[i - 1];
-    while (ci < chStarts.length && chStarts[ci] <= w.start + 0.25) { const h = document.createElement('div'); h.className = 'ch'; const c = cur.chapters[ci]; h.textContent = `${ci + 1}. ${c.title}`; h.onclick = () => audio.currentTime = c.t; frag.appendChild(h); p = null; ci++; }
+    while (ci < chStarts.length && chStarts[ci] <= w.start + 0.25) { const h = document.createElement('div'); h.className = 'ch'; const c = cur.chapters[ci]; h.textContent = `${ci + 1}. ${c.title}`; h.onclick = () => playFrom(c.t); frag.appendChild(h); p = null; ci++; }
     if (!p || (hasLines ? w.p : (prev && w.start - prev.end > 1.1 && /[.!?]$/.test(prev.text)))) { p = document.createElement('p'); frag.appendChild(p); }
     const s = document.createElement('span'); s.className = 'w'; s.textContent = w.text; s.onclick = () => { audio.currentTime = Math.max(0, w.start - 0.05); showRepBar(i); };
     p.appendChild(s); p.appendChild(document.createTextNode(' ')); wordEls.push(s);

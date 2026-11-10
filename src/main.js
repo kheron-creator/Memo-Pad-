@@ -1881,6 +1881,7 @@ async function quoteToPad(f, title) {
 const PAD_SECS = [['today', 'Today'], ['sweep', 'Mind Sweep'], ['done', 'Done'], ['quotes', 'Quotes'], ['pillars', 'Pillars']];
 const PILLARS = ['mentally', 'emotionally', 'professionally', 'physically', 'socially', 'romantically'];
 let padSec = (k => PAD_SECS.some(x => x[0] === k) ? k : 'today')(localStorage.getItem('mp.padsec')), padData = null, padAt = 0, padBusy = false, padNewQ = '';
+let padFocus = false;
 const padDone = {}; // mind sweep id -> the Done entry we added, so an untick can take it back off
 function drawPadWave(cv, wx, d, band) {
   const W = cv.width, y = 62 * d, h = 26 * d, n = Math.floor(W / (6 * d));
@@ -1920,6 +1921,7 @@ async function padLoad() {
   padBusy = false;
 }
 const padRow = (kind, id, text, done, extra = '') => `<button type="button" class="prow${done ? ' done' : ''}" data-k="${kind}" data-id="${id}"><span class="ptk"></span><span class="ptx">${esc(text)}</span>${extra}</button>`;
+const padAdd = (kind, ph) => `<form class="padadd" data-k="${kind}"><input type="text" maxlength="500" placeholder="${ph}" enterkeyhint="done" autocomplete="off"><button type="submit" aria-label="Add">Add</button></form>`;
 const padH = t => `<div class="ph">${t}</div>`;
 function padPart(k) {
   const P = padData;
@@ -1928,10 +1930,10 @@ function padPart(k) {
     return padH('Triggers') + (P.trig.length ? P.trig.map(t => padRow('trig', t.id, t.name, t.done, t.times > 1 ? `<span class="pct">×${t.times}</span>` : '')).join('') : '<div class="pempty">No triggers planned for today.</div>')
       + padH('Next up') + (open.length ? open.slice(0, 3).map(x => padRow('sweep', x.id, x.title, false)).join('') : '<div class="pempty">Nothing open. Lovely.</div>');
   }
-  if (k === 'sweep') { const open = P.sweep.filter(x => x.status === 'todo'), got = P.sweep.filter(x => x.status !== 'todo'); return padH(`Mind Sweep · ${open.length} open`) + (open.map(x => padRow('sweep', x.id, x.title, false)).join('') || '<div class="pempty">Nothing open.</div>') + (got.length ? padH('Done today') + got.map(x => padRow('sweep', x.id, x.title, true)).join('') : ''); }
-  if (k === 'done') return padH(`Done today · ${P.done.length}`) + (P.done.map(x => `<div class="pq">${esc(x.title)}</div>`).join('') || '<div class="pempty">Nothing yet today. Your first win will show here.</div>');
-  if (k === 'quotes') return padH('Quotes') + (P.quotes.map(x => `<div class="pq${x.id === padNewQ ? ' new' : ''}">${esc(x.title)}${x.notes ? `<small>${esc(x.notes.split('\n')[0])}</small>` : ''}</div>`).join('') || '<div class="pempty">Press ☆ FAVOURITE and the line lands here.</div>');
-  if (k === 'pillars') { const any = PILLARS.some(p => P.pillars[p] != null); return padH('Life Pillars today') + (any ? PILLARS.map(p => { const v = P.pillars[p]; return `<div class="ppil"><span>${p[0].toUpperCase() + p.slice(1)}</span><i><b class="${v != null && v <= 4 ? 'low' : ''}" style="width:${(v || 0) * 10}%"></b></i><em>${v ?? '–'}</em></div>`; }).join('') : '<div class="pempty">Not rated yet today. Rate them on the Progress Pad website.</div>'); }
+  if (k === 'sweep') { const open = P.sweep.filter(x => x.status === 'todo'), got = P.sweep.filter(x => x.status !== 'todo'); return padAdd('sweep', 'Add to Mind Sweep…') + padH(`Mind Sweep · ${open.length} open`) + (open.map(x => padRow('sweep', x.id, x.title, false)).join('') || '<div class="pempty">Nothing open.</div>') + (got.length ? padH('Done today') + got.map(x => padRow('sweep', x.id, x.title, true)).join('') : ''); }
+  if (k === 'done') return padAdd('done', 'Add a win to your Done list…') + padH(`Done today · ${P.done.length}`) + (P.done.map(x => `<div class="pq">${esc(x.title)}</div>`).join('') || '<div class="pempty">Nothing yet today. Your first win will show here.</div>');
+  if (k === 'quotes') return padAdd('quotes', 'Add a quote…') + padH('Quotes') + (P.quotes.map(x => `<div class="pq${x.id === padNewQ ? ' new' : ''}">${esc(x.title)}${x.notes ? `<small>${esc(x.notes.split('\n')[0])}</small>` : ''}</div>`).join('') || '<div class="pempty">Press ☆ FAVOURITE and the line lands here.</div>');
+  if (k === 'pillars') return padH('Life Pillars today · slide to rate 1 to 10') + PILLARS.map(p => { const v = P.pillars[p]; return `<label class="ppil${v == null ? ' unset' : ''}"><span>${p[0].toUpperCase() + p.slice(1)}</span><input type="range" min="1" max="10" step="1" value="${v ?? 5}" data-p="${p}" aria-label="${p} rating"><em>${v ?? '–'}</em></label>`; }).join('');
   return '';
 }
 function padRender(msg) {
@@ -1940,10 +1942,11 @@ function padRender(msg) {
   const L = $('padList'), top = L.scrollTop;
   L.innerHTML = msg ? `<div class="pempty">${esc(msg)}</div>` : padData ? padPart(padSec) : '<div class="pempty">Loading your Progress Pad…</div>';
   if (!padNewQ) L.scrollTop = top; padNewQ = '';
+  if (padFocus) { const i = L.querySelector('.padadd input'); if (i) i.focus({ preventScroll: true }); padFocus = false; }
 }
 $('padSec').addEventListener('click', e => { const b = e.target.closest('button[data-s]'); if (!b) return; e.stopPropagation(); padSec = b.dataset.s; localStorage.setItem('mp.padsec', padSec); $('padList').scrollTop = 0; padRender(); });
 $('padView').addEventListener('click', e => e.stopPropagation());
-$('padView').addEventListener('pointerdown', e => e.stopPropagation());
+$('padView').addEventListener('pointerdown', e => e.stopPropagation()); $('padView').addEventListener('pointerup', e => e.stopPropagation());
 $('padList').addEventListener('click', async e => {
   const r = e.target.closest('.prow'); if (!r || !padData || r.disabled) return;
   const id = r.dataset.id, day = padData.day, u = user.id; r.disabled = true;
@@ -1963,6 +1966,27 @@ $('padList').addEventListener('click', async e => {
     }
     padRender();
   } catch (err) { toast('Could not save to Progress Pad: ' + (err.message || err), true); r.disabled = false; }
+});
+// add to Mind Sweep, the Done list or Quotes, straight into the Progress Pad
+$('padList').addEventListener('submit', async e => {
+  e.preventDefault(); e.stopPropagation(); const f = e.target.closest('.padadd'); if (!f || !padData || !user) return;
+  const inp = f.querySelector('input'), text = inp.value.trim(); if (!text) return;
+  const kind = f.dataset.k, day = padData.day, u = user.id; inp.disabled = true;
+  try {
+    if (kind === 'sweep') { const r = await supabase.from('mind_sweep_items').insert({ user_id: u, on_date: day, title: text.slice(0, 500), status: 'todo' }).select('id,title,status,on_date,sort_order,priority,updated_at').single(); if (r.error) throw r.error; padData.sweep.unshift(r.data); toast('Added to your Mind Sweep ✓', false, 2200); }
+    else { const r = await supabase.from('writing_entries').insert({ user_id: u, on_date: day, kind, title: text.slice(0, 500), notes: kind === 'quotes' ? 'Added in MemoPad' : null }).select('id,title,notes,created_at').single(); if (r.error) throw r.error; if (kind === 'done') { padData.done.unshift(r.data); toast('Nice one. On your Done list ✓', false, 2200); } else { padData.quotes.unshift(r.data); padNewQ = r.data.id; toast('Added to your Quotes ✓', false, 2200); } }
+    inp.value = ''; padFocus = true; padRender();
+  } catch (err) { toast('Could not save to Progress Pad: ' + (err.message || err), true); inp.disabled = false; }
+});
+// rate the six Life Pillars: saves when you let go of the slider
+$('padList').addEventListener('input', e => { const r = e.target.closest('input[type=range][data-p]'); if (!r) return; const l = r.closest('.ppil'); l.classList.remove('unset'); l.querySelector('em').textContent = r.value; });
+$('padList').addEventListener('change', async e => {
+  const r = e.target.closest('input[type=range][data-p]'); if (!r || !padData || !user) return;
+  const p = r.dataset.p, v = +r.value, was = padData.pillars[p]; padData.pillars[p] = v;
+  const q = await supabase.from('pillar_entries').upsert({ user_id: user.id, on_date: padData.day, pillar_id: p, rating: v, updated_at: new Date().toISOString() }, { onConflict: 'user_id,on_date,pillar_id' });
+  if (q.error) { padData.pillars[p] = was; toast('Could not save that rating: ' + q.error.message, true); padRender(); return; }
+  if (was != null && was - v >= 3) toast(`${p[0].toUpperCase() + p.slice(1)} dropped ${was - v} points. Be gentle with yourself today.`, false, 4000);
+  else toast(`${p[0].toUpperCase() + p.slice(1)}: ${v} saved ✓`, false, 1800);
 });
 padShow(vizStyle === 'pad');
 document.addEventListener('visibilitychange', () => { if (!document.hidden && vizStyle === 'pad' && Date.now() - padAt > 30000) padLoad(); });

@@ -738,7 +738,7 @@ function sizeCanvas(c) { const r = c.getBoundingClientRect(), d = devicePixelRat
 const PX_PER_SEC = () => wv.width / 7.5; // about 7.5 seconds visible, like a voice memo
 function rrect(ctx, x, y, w, h, r) { ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(x, y, w, h, r); else ctx.rect(x, y, w, h); ctx.fill(); }
 // ---------- visualiser styles (driven by the memo's own sound levels, so it works with the screen locked or in the car) ----------
-let vizStyle = (v => v === 'black' ? 'time' : ['wave', 'bars', 'circle', 'time'].includes(v) ? v : 'wave')(localStorage.getItem('mp.viz')), vizEnv = 0, vizHist = new Array(64).fill(0);
+let vizStyle = (v => v === 'black' ? 'time' : ['wave', 'bars', 'circle', 'time', 'lofi'].includes(v) ? v : 'wave')(localStorage.getItem('mp.viz')), vizEnv = 0, vizHist = new Array(64).fill(0);
 function setViz(v) { vizStyle = v; localStorage.setItem('mp.viz', v); $('waveWrap').classList.toggle('viz', v !== 'wave'); document.querySelectorAll('#vizSw button, #vfSw button').forEach(b => b.classList.toggle('on', b.dataset.v === v)); }
 document.querySelectorAll('#vizSw button, #vfSw button').forEach(b => b.onclick = e => { e.stopPropagation(); setViz(b.dataset.v); });
 setViz(vizStyle);
@@ -837,6 +837,98 @@ function drawListenTime(cv, wx, d, band, e, now) {
   });
   wx.textBaseline = 'alphabetic';
 }
+// ---------- Lofi view: a calm co-working scene that moves with the memo (our own drawing) ----------
+const lofiLogo = new Image(); lofiLogo.src = '/logo.png';
+const LOFI_CITY = Array.from({ length: 14 }, (_, i) => { const r = n => { const x = Math.sin(i * 127.1 + n * 311.7) * 43758.5453; return x - Math.floor(x); }; return { x: 975 + i * 40, w: 30 + r(1) * 26, h: 110 + r(2) * 230, s: r(3) }; });
+function drawLofi(cv, wx, d, band, e, now) {
+  const W = cv.width, H = cv.height, s = Math.max(W / 1600, H / 1000);
+  const ox = W / 2 - 800 * s, oy = clamp(H / 2 - 560 * s, H - 1000 * s, 0);
+  wx.save(); wx.setTransform(s, 0, 0, s, ox, oy);
+  const R = (x, y, w, h, r, c) => { wx.fillStyle = c; wx.beginPath(); wx.roundRect ? wx.roundRect(x, y, w, h, r) : wx.rect(x, y, w, h); wx.fill(); };
+  const C = (x, y, r, c) => { wx.fillStyle = c; wx.beginPath(); wx.arc(x, y, r, 0, 7); wx.fill(); };
+  const soft = (x, y, r, col, a) => { const g = wx.createRadialGradient(x, y, 0, x, y, r); g.addColorStop(0, col + Math.round(clamp(a, 0, 1) * 255).toString(16).padStart(2, '0')); g.addColorStop(1, col + '00'); wx.fillStyle = g; wx.fillRect(x - r, y - r, r * 2, r * 2); };
+  // the room
+  let g = wx.createLinearGradient(0, 0, 0, 1000); g.addColorStop(0, '#17132a'); g.addColorStop(1, '#2a2142'); wx.fillStyle = g; wx.fillRect(-2000, -2000, 5600, 5000);
+  // window: dusk city in the rain
+  wx.save(); wx.beginPath(); wx.rect(980, 120, 520, 440); wx.clip();
+  g = wx.createLinearGradient(0, 120, 0, 560); g.addColorStop(0, '#1d1840'); g.addColorStop(0.6, '#4a2c6e'); g.addColorStop(1, '#e8607a'); wx.fillStyle = g; wx.fillRect(980, 120, 520, 440);
+  C(1400, 200, 30, '#ffe9c7'); soft(1400, 200, 90, '#ffe9c7', 0.25);
+  LOFI_CITY.forEach((b, i) => {
+    const top = 560 - b.h; R(b.x, top, b.w, b.h + 5, 2, i % 2 ? '#191530' : '#221b3d');
+    for (let yy = top + 12; yy < 545; yy += 22) for (let xx = b.x + 6; xx < b.x + b.w - 8; xx += 12) { const on = Math.sin(xx * 3.1 + yy * 1.7 + b.s * 9) > 0.25; if (on) { const tw = 0.55 + 0.45 * Math.sin(now * (0.3 + b.s) + xx); wx.globalAlpha = 0.35 + 0.5 * tw; R(xx, yy, 5, 8, 1, b.s > 0.5 ? '#ffcd5e' : '#b3d5dd'); } }
+    wx.globalAlpha = 1;
+  });
+  wx.strokeStyle = '#c9d6ff55'; wx.lineWidth = 2; wx.lineCap = 'round';
+  for (let k = 0; k < 70; k++) { const x = 980 + ((k * 97.3) % 520), sp = 380 + (k % 7) * 40, y = 120 + ((now * sp + k * 53) % 480); wx.beginPath(); wx.moveTo(x, y); wx.lineTo(x - 5, y + 22); wx.stroke(); }
+  wx.restore();
+  R(970, 110, 540, 12, 3, '#0e0b1c'); R(970, 556, 540, 14, 3, '#0e0b1c'); R(970, 110, 12, 458, 3, '#0e0b1c'); R(1498, 110, 12, 458, 3, '#0e0b1c'); R(1234, 110, 10, 458, 2, '#0e0b1c');
+  // shelf, books and a plant
+  R(110, 330, 360, 12, 3, '#3b2b44');
+  [['#e10195', 36, 70], ['#ffb000', 28, 82], ['#5197a8', 40, 64], ['#25dd5f', 26, 76], ['#eb7100', 34, 70]].forEach(([c, w, h], i, a) => { const x = 130 + a.slice(0, i).reduce((t, q) => t + q[1] + 6, 0); R(x, 330 - h, w, h, 3, c + 'b0'); });
+  R(380, 290, 50, 40, 6, '#c2703d');
+  for (let k = 0; k < 6; k++) { const a = -2.6 + k * 0.42 + Math.sin(now * 0.8 + k) * 0.04; wx.fillStyle = k % 2 ? '#2f9e5b' : '#25dd5f'; wx.beginPath(); wx.ellipse(405 + Math.cos(a) * 34, 290 + Math.sin(a) * 34, 26, 9, a, 0, 7); wx.fill(); }
+  // someone else working at the back (it's a co-working space)
+  wx.globalAlpha = 0.55; R(120, 640, 330, 12, 4, '#3a2c3e'); C(250, 560, 30, '#1d1726'); R(205, 588, 92, 60, 26, '#1d1726'); R(285, 590, 80, 52, 6, '#2b2735'); soft(325, 600, 80, '#7fd8ff', 0.18); wx.globalAlpha = 1;
+  // pendant lamp, glowing with the voice
+  wx.strokeStyle = '#0c0a14'; wx.lineWidth = 3; wx.beginPath(); wx.moveTo(800, -40); wx.lineTo(800, 150); wx.stroke();
+  soft(800, 230, 520, '#ffb000', 0.16 + e * 0.22);
+  wx.fillStyle = '#211a2e'; wx.beginPath(); wx.moveTo(770, 150); wx.lineTo(830, 150); wx.lineTo(870, 200); wx.lineTo(730, 200); wx.closePath(); wx.fill();
+  C(800, 203, 12, '#ffe2a0');
+  // the person: chair, hoodie, head and MemoPad headphones
+  const bob = Math.sin(now * 2.2) * 3 + e * 6;
+  R(680, 450, 240, 380, 40, '#141020');
+  wx.fillStyle = '#1f7a57'; wx.beginPath(); wx.moveTo(640, 1000); wx.lineTo(650, 690); wx.quadraticCurveTo(660, 625, 740, 618); wx.lineTo(860, 618); wx.quadraticCurveTo(940, 625, 950, 690); wx.lineTo(960, 1000); wx.closePath(); wx.fill();
+  wx.fillStyle = '#18654a'; wx.beginPath(); wx.ellipse(800, 622, 70, 22, 0, 0, 7); wx.fill();
+  R(778, 560 + bob * 0.4, 44, 66, 12, '#7a4a2f');
+  const hy = 495 + bob;
+  wx.save(); wx.beginPath(); wx.ellipse(800, hy - 50, 108, 82, 0, 0, 7); wx.fillStyle = '#1b1310'; wx.fill(); wx.restore();
+  for (let k = 0; k < 9; k++) C(800 + Math.cos(k / 9 * Math.PI * 2) * 92, hy - 52 + Math.sin(k / 9 * Math.PI * 2) * 66, 30, '#1b1310');
+  wx.fillStyle = '#8a5638'; wx.beginPath(); wx.ellipse(800, hy + 8, 70, 84, 0, 0, 7); wx.fill();
+  wx.fillStyle = '#1b1310'; wx.beginPath(); wx.ellipse(800, hy - 48, 74, 42, 0, Math.PI, 2 * Math.PI); wx.fill(); // hairline
+  for (let k = 0; k < 7; k++) C(738 + k * 21, hy - 50 + Math.abs(k - 3) * 4, 16, '#1b1310');
+  soft(800, hy + 40, 120, '#7fd8ff', 0.12); // screen light on the face
+  wx.strokeStyle = '#2a1712'; wx.lineWidth = 4; wx.lineCap = 'round';
+  wx.beginPath(); wx.arc(772, hy + 6, 11, 0.15 * Math.PI, 0.85 * Math.PI); wx.stroke();
+  wx.beginPath(); wx.arc(828, hy + 6, 11, 0.15 * Math.PI, 0.85 * Math.PI); wx.stroke();
+  wx.beginPath(); wx.arc(800, hy + 38, 14, 0.2 * Math.PI, 0.8 * Math.PI); wx.stroke();
+  soft(760, hy + 30, 22, '#e10195', 0.18); soft(840, hy + 30, 22, '#e10195', 0.18);
+  wx.strokeStyle = '#2b2b33'; wx.lineWidth = 18; wx.beginPath(); wx.arc(800, hy - 2, 118, 1.08 * Math.PI, 1.92 * Math.PI); wx.stroke();
+  wx.strokeStyle = '#e10195'; wx.lineWidth = 6; wx.beginPath(); wx.arc(800, hy - 2, 118, 1.12 * Math.PI, 1.88 * Math.PI); wx.stroke();
+  [[688, -1], [912, 1]].forEach(([x, side]) => {
+    R(x - 30, hy - 40, 60, 100, 26, '#2b2b33'); R(x - 22, hy - 32, 44, 84, 20, '#e10195');
+    R(x - 17, hy - 27, 34, 74, 16, '#1c1c24');
+    wx.save(); wx.translate(x, hy + 10); wx.rotate(side * Math.PI / 2); wx.fillStyle = '#fff'; wx.font = '700 15px Poppins, system-ui, sans-serif'; wx.textAlign = 'center'; wx.textBaseline = 'middle'; wx.fillText('MemoPad', 0, 0); wx.restore();
+  });
+  // music notes drifting from the headphones
+  wx.font = '600 30px Poppins, system-ui, sans-serif'; wx.textAlign = 'center';
+  for (let k = 0; k < 4; k++) { const p = (now * 0.25 + k / 4) % 1; wx.globalAlpha = Math.sin(p * Math.PI) * (0.35 + e * 0.6); wx.fillStyle = ['#ffb000', '#25dd5f', '#e10195', '#5197a8'][k]; wx.fillText(k % 2 ? '♪' : '♫', 960 + p * 90 + Math.sin(p * 9 + k) * 12, hy - 20 - p * 200); }
+  wx.globalAlpha = 1;
+  // arms reaching to the keyboard
+  wx.strokeStyle = '#1f7a57'; wx.lineWidth = 58; wx.lineCap = 'round';
+  wx.beginPath(); wx.moveTo(668, 700); wx.quadraticCurveTo(650, 800, 720, 810); wx.stroke();
+  wx.beginPath(); wx.moveTo(932, 700); wx.quadraticCurveTo(950, 800, 880, 810); wx.stroke();
+  // desk
+  g = wx.createLinearGradient(0, 800, 0, 840); g.addColorStop(0, '#8a603f'); g.addColorStop(1, '#6b4a33'); wx.fillStyle = g; wx.fillRect(-400, 800, 2400, 34);
+  wx.fillStyle = '#3b2a20'; wx.fillRect(-400, 834, 2400, 400);
+  // laptop with the Progress Today logo on the lid
+  soft(800, 730, 240, '#7fd8ff', 0.1 + e * 0.08);
+  g = wx.createLinearGradient(0, 655, 0, 805); g.addColorStop(0, '#34343e'); g.addColorStop(1, '#23232b'); R(645, 655, 310, 150, 14, g);
+  wx.strokeStyle = '#7fd8ff55'; wx.lineWidth = 2; wx.beginPath(); wx.roundRect ? wx.roundRect(645, 655, 310, 150, 14) : wx.rect(645, 655, 310, 150); wx.stroke();
+  if (lofiLogo.complete && lofiLogo.naturalWidth) { const lw = 210, lh = lw * lofiLogo.naturalHeight / lofiLogo.naturalWidth; wx.globalAlpha = 0.92; wx.drawImage(lofiLogo, 800 - lw / 2, 728 - lh / 2, lw, lh); wx.globalAlpha = 1; }
+  R(600, 800, 400, 12, 5, '#4a4a55');
+  // mug with steam
+  R(1060, 735, 62, 70, 10, '#ffb000'); wx.strokeStyle = '#ffb000'; wx.lineWidth = 9; wx.beginPath(); wx.arc(1124, 768, 17, -1.3, 1.3); wx.stroke();
+  R(1066, 741, 50, 10, 4, '#5a3320');
+  wx.strokeStyle = '#ffffff'; wx.lineWidth = 5;
+  for (let k = 0; k < 3; k++) { wx.beginPath(); for (let y = 0; y < 110; y += 6) { const x = 1076 + k * 16 + Math.sin(y * 0.07 + now * 1.6 + k * 2) * 7; y ? wx.lineTo(x, 725 - y) : wx.moveTo(x, 725 - y); } wx.globalAlpha = 0.22; wx.stroke(); }
+  wx.globalAlpha = 1;
+  // notebook and pencil
+  wx.save(); wx.translate(1250, 790); wx.rotate(-0.06); R(-70, -16, 140, 22, 4, '#f3ead8'); R(-70, -16, 10, 22, 3, '#e10195'); R(-40, -26, 110, 6, 3, '#ffcd5e'); wx.restore();
+  // small plant on the desk
+  R(440, 750, 56, 52, 8, '#5197a8');
+  for (let k = 0; k < 5; k++) { const a = -2.4 + k * 0.4 + Math.sin(now + k) * 0.05; wx.fillStyle = '#25dd5f'; wx.beginPath(); wx.ellipse(468 + Math.cos(a) * 30, 748 + Math.sin(a) * 30, 22, 8, a, 0, 7); wx.fill(); }
+  wx.restore();
+}
 function drawViz(d, cv = wv, wx = cv.getContext('2d'), style = vizStyle) {
   anSync(false); const F = anLevels();
   const W = cv.width, H = cv.height, t = audio.currentTime || 0, cols = THEMES[theme], now = performance.now() / 1000;
@@ -848,6 +940,7 @@ function drawViz(d, cv = wv, wx = cv.getContext('2d'), style = vizStyle) {
   wx.clearRect(0, 0, W, H); wx.fillStyle = '#0b0b0d'; wx.fillRect(0, 0, W, H);
   const cx = W / 2, cy = H / 2, M = Math.min(W, H), e = vizEnv;
   const band = live ? (k => Math.max(0.03, Math.min(1, live[k % 32] * 1.15))) : k => { const N = 32, f = k / N; return Math.max(0.03, e * (0.5 + 0.5 * Math.sin(k * 0.9 + now * 4.2 + vizHist[k % 64] * 7)) * (1 - f * 0.55) + vizHist[Math.min(63, k)] * 0.25); };
+  if (style === 'lofi') { drawLofi(cv, wx, d, band, e, now); return; } // a calm co-working scene
   if (style === 'time') { drawListenTime(cv, wx, d, band, e, now); return; } // your listening totals, moving with the sound
   if (style === 'bars') {
     const N = 32, gap = 3 * d, bw = Math.min(18 * d, (W * 0.86 / (N * 2)) - gap), x0 = cx - (N * (bw + gap));

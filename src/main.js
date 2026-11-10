@@ -1448,6 +1448,7 @@ function sentenceAt(i) {
   return [j, k];
 }
 const sentStart = j => Math.max(0, (dispSt[j] ?? cur.words[j].start) - 0.05);
+const nowSentence = () => cur && cur.words.length ? sentenceAt(Math.max(0, activeWord(audio.currentTime))) : null; // the affirmation playing now
 
 // ---------- repeat one affirmation 3, 5 or 10 times ----------
 let rep = null, repHide = 0;

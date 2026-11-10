@@ -2085,10 +2085,11 @@ holdable($('vfPrev'), -1); holdable($('vfNext'), 1);
   vf.addEventListener('mouseleave', () => { clearTimeout(topT); topT = setTimeout(() => vf.classList.remove('top'), 1200); });
 }
 // tap the screen (anywhere that isn't a button) to pause or play
-$('vFull').addEventListener('click', e => { if (e.target.closest('button')) { vfPoke(); return; } togglePlay(); vfPoke(); });
+// first tap wakes the screen and shows the view buttons; a second tap while they show plays or pauses
+$('vFull').addEventListener('click', e => { if (e.target.closest('button')) { vfPoke(); return; } const awake = $('vFull').classList.contains('ctl') || $('vFull').classList.contains('top'); if (awake) togglePlay(); vfPoke(); });
 { let tap = null;
-  $('waveWrap').addEventListener('pointerdown', e => { tap = vizStyle !== 'wave' && !e.target.closest('button') ? { x: e.clientX, y: e.clientY, t: performance.now() } : null; });
-  $('waveWrap').addEventListener('pointerup', e => { if (tap && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) < 8 && performance.now() - tap.t < 400) togglePlay(); tap = null; }); }
+  $('waveWrap').addEventListener('pointerdown', e => { tap = vizStyle !== 'wave' && !e.target.closest('button') ? { x: e.clientX, y: e.clientY, t: performance.now(), idle: $('waveWrap').classList.contains('idle') } : null; });
+  $('waveWrap').addEventListener('pointerup', e => { if (tap && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) < 8 && performance.now() - tap.t < 400) { if (tap.idle) vzPoke(); else { togglePlay(); if (!audio.paused) vzPoke(); } } tap = null; }); }
 document.addEventListener('fullscreenchange', () => { if (!fsEl() && !$('vFull').hidden) closeVizFull(); });
 addEventListener('keydown', e => { if (e.key === 'Escape' && !$('vFull').hidden) { e.preventDefault(); closeVizFull(); } });
 

@@ -20,6 +20,7 @@ const DEFAULT_CATS = ['Confidence', 'Tasks', 'Mornings', 'Mindset', 'Gratitude']
 const BPS = 20; // waveform bars per second
 const MB = 1048576;
 let theme = localStorage.getItem('vma.theme') || 'pt', model = localStorage.getItem('vma.model') || (matchMedia('(pointer:coarse)').matches ? 'Xenova/whisper-tiny.en' : 'Xenova/whisper-base.en');
+const SIGN_SECS = 12 * 3600; let signedAt = 0; // audio links last 12 hours and are renewed before they run out
 let tracks = [], cur = null; // {id,user_id,title,category,audio_path,duration,peaks,words,chapters,is_shared,added,blob?}
 let mode = 'wave';
 let user = null;
@@ -298,6 +299,7 @@ function libMenu(t, row) {
   const m = document.createElement('div'); m.className = 'vmenu'; const own = isOwn(t), hasTx = t.words.length > 0;
   const items = [
     own && ['Rename', '✎', () => renameInList(t, row)],
+    own && !hasTx && ['Transcribe', '✍', () => { t._txFailed = false; enqueueTranscribe(t, false); }],
     hasTx && ['Favourite this line', '☆', () => { const sn = nowSentence(); if (sn) toggleFav(sn[0], sn[1]); }],
     hasTx && ['Copy transcript', '⧉', () => copyText(t.words.map(w => w.text).join(' ').replace(/\s+([,.!?;:])/g, '$1'))],
     ['Edit in the full player', '〰', () => closeLib()],
@@ -357,7 +359,7 @@ function prepAudio(t) {
     try {
       const blob = t.blob || await audioGet(t.id);
       if (blob) { t.blob = blob; t._readyUrl = URL.createObjectURL(blob); return; }
-      const { data } = await supabase.storage.from(BUCKET).createSignedUrl(t.audio_path, 3600);
+      const { data } = await supabase.storage.from(BUCKET).createSignedUrl(t.audio_path, SIGN_SECS);
       if (data) { t._readyUrl = data.signedUrl; t._readyAt = Date.now(); }
     } catch { /* falls back to the normal load */ } finally { t._prepping = null; }
   })();
@@ -374,7 +376,7 @@ function peekBox(t) {
   x.addEventListener('click', e => e.stopPropagation());
   const go = open => {
     clearTimeout(peekT); peek = null; stopPlaylist(); libFold = false; skipResume = true;
-    if (t._readyUrl && Date.now() - (t._readyAt || Date.now()) > 3000e3) t._readyUrl = null; // signed links last an hour
+    if (t._readyUrl && Date.now() - (t._readyAt || Date.now()) > (SIGN_SECS - 600) * 1000) t._readyUrl = null; // links run out after a while
     const ready = !!t._readyUrl;
     const p = select(t); // with the audio ready, this swaps the track right now, inside your tap
     if (ready) playFrom(st); else p.then(() => { if (cur === t) playFrom(st); });
@@ -458,14 +460,14 @@ async function select(t) {
 }
 // cached copy first (works offline), otherwise a signed URL from the private bucket
 async function loadAudio(t) {
-  if (t._readyUrl) { const u = t._readyUrl; t._readyUrl = null; setSrc(u); audio.playbackRate = speed(); resumeAt(t); return; }
+  if (t._readyUrl) { const u = t._readyUrl; t._readyUrl = null; signedAt = t._readyAt || Date.now(); setSrc(u); audio.playbackRate = speed(); resumeAt(t); return; }
   const blob = t.blob || await audioGet(t.id);
   if (cur !== t) return;
   if (blob) { t.blob = blob; setSrc(URL.createObjectURL(blob)); audio.playbackRate = speed(); resumeAt(t); return; }
-  const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(t.audio_path, 3600);
+  const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(t.audio_path, SIGN_SECS);
   if (cur !== t) return;
   if (error) { status('Could not load this audio. Check your connection.', true); return; }
-  setSrc(data.signedUrl); audio.playbackRate = speed(); resumeAt(t);
+  signedAt = Date.now(); setSrc(data.signedUrl); audio.playbackRate = speed(); resumeAt(t);
   // the audio streams; the whole file is only downloaded when you choose Save for offline (saves data and keeps it quick)
 }
 // resume where you left off: each memo remembers its spot
@@ -631,7 +633,28 @@ function togglePlay() { if (!cur || !audio.src) return; if (audio.paused) audio.
 $('play').onclick = togglePlay;
 audio.onplay = () => { markRecent(cur); $('playIcon').setAttribute('d', 'M16 10 h10 v44 h-10 Z M38 10 h10 v44 h-10 Z'); $('play').classList.add('on'); renderLib(); };
 audio.onpause = () => { $('playIcon').setAttribute('d', 'M18 10 L54 32 L18 54 Z'); $('play').classList.remove('on'); renderLib(); };
-audio.onerror = () => { if (cur && audio.src) status('This audio could not play. Check your connection and try again.', true); };
+// if the audio link has run out (e.g. the tab was left open for a long time), get a fresh one and carry on from the same spot
+let relinking = false;
+async function relink(play) {
+  const t = cur; if (!t || relinking || !srcUrl || srcUrl.startsWith('blob:')) return false;
+  relinking = true; const at = audio.currentTime || +localStorage.getItem('mp.pos.' + t.id) || 0;
+  try {
+    const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(t.audio_path, SIGN_SECS);
+    if (error || cur !== t) return false;
+    signedAt = Date.now(); skipResume = true; setSrc(data.signedUrl); audio.playbackRate = speed(); seekTo(at);
+    if (play) audio.play().catch(() => {});
+    return true;
+  } finally { relinking = false; }
+}
+audio.onerror = () => {
+  if (!cur || !audio.src) return;
+  if (srcUrl && !srcUrl.startsWith('blob:') && !audio._relinked) { audio._relinked = true; relink(Date.now() - playReqAt < 8000).then(ok => { if (!ok) status('This audio could not play. Check your connection and try again.', true); }); return; }
+  status('This audio could not play. Check your connection and try again.', true);
+};
+let playReqAt = 0;
+audio.addEventListener('playing', () => { audio._relinked = false; });
+// before playing, swap in a fresh link if the current one is old
+audio.addEventListener('play', () => { playReqAt = Date.now(); if (srcUrl && !srcUrl.startsWith('blob:') && Date.now() - signedAt > (SIGN_SECS - 600) * 1000) relink(true); });
 const jump = d => { if (cur) audio.currentTime = clamp(audio.currentTime + d, 0, audio.duration || cur.duration); };
 $('back').onclick = () => jump(-15); $('fwd').onclick = () => jump(15);
 // skip through chapters like songs
@@ -957,7 +980,7 @@ function renderTranscript() {
     T.innerHTML = (txing === cur || txQueue.includes(cur))
       ? `<div class="empty">Transcribing in the background…<br>The words will appear here and light up as it plays.</div>`
       : isOwn(cur)
-      ? `<div class="empty">No transcript yet.<br>Press <b>TRANSCRIBE</b> to turn the audio into text that lights up as it plays.<br><br><span style="font-size:15px">Runs privately on your device. The first time it downloads a speech model.${lowPower && cur.duration > 600 ? '<br>Long tracks transcribe best on a computer. Or paste your written script in Settings.' : ''}</span></div>`
+      ? `<div class="empty">No transcript yet.<br>Tap <b>⋯</b> on the memo in your list and choose <b>Transcribe</b> to turn the audio into text that lights up as it plays.<br><br><span style="font-size:15px">Runs privately on your device. The first time it downloads a speech model.${lowPower && cur.duration > 600 ? '<br>Long tracks transcribe best on a computer. Or paste your written script in Settings.' : ''}</span></div>`
       : `<div class="empty">No transcript for this memo yet.</div>`;
     return;
   }
@@ -1085,7 +1108,7 @@ function transcribe(t, auto) {
     const pg = p => { if (here()) prog(p); };
     let fake = null;
     const finish = () => { clearInterval(fake); t._txMsg = ''; pg(null); resolve(); };
-    const fail = msg => { t._txFailed = true; finish(); if (here()) status('Transcription failed (' + msg + '). Press TRANSCRIBE to try again. The first run needs internet to download the speech model.', true); else toast(`Could not transcribe "${t.title}": ${msg}`, true); };
+    const fail = msg => { t._txFailed = true; finish(); if (here()) status('Transcription failed (' + msg + '). To try again, tap ⋯ on the memo in your list and choose Transcribe. The first run needs internet to download the speech model.', true); else toast(`Could not transcribe "${t.title}": ${msg}`, true); };
     try {
       st('Preparing audio for the transcript…'); pg(3);
       // decode straight to 16 kHz mono: a fraction of the memory of full quality, so phones cope better

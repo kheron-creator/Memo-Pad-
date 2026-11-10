@@ -39,7 +39,7 @@ function status(t, err) { const s = $('status'); s.textContent = t || ''; s.clas
 let toastT;
 function toast(t, warn, ms = 4200, action) {
   const el = $('toast'); el.textContent = t; el.className = 'toast show' + (warn ? ' warn' : '');
-  if (action) { const b = document.createElement('button'); b.className = 'tact'; b.textContent = action.label; b.onclick = () => { el.className = 'toast'; clearTimeout(toastT); action.run(); }; el.append(' ', b); }
+  [].concat(action || []).forEach(a => { const b = document.createElement('button'); b.className = 'tact'; b.textContent = a.label; b.onclick = () => { el.className = 'toast'; clearTimeout(toastT); a.run(); }; el.append(' ', b); });
   clearTimeout(toastT); toastT = setTimeout(() => el.className = 'toast', ms);
 }
 const mb = b => (b / MB).toFixed(b < 10 * MB ? 1 : 0) + ' MB';
@@ -1085,7 +1085,7 @@ function curMoment() {
 function toggleMoment() {
   const mo = curMoment(); if (!mo) return; const x = favIndex(mo.j, mo.k);
   if (x >= 0) { favs.splice(x, 1); toast('Removed from favourites.', false, 2000); }
-  else { favs.unshift({ m: cur.id, ...mo }); toast('Saved to favourites ★', false, 2000); }
+  else { favs.unshift({ m: cur.id, ...mo }); toast('Saved to favourites ★', false, 5000, { label: 'See all', run: openFavs }); }
   localStorage.setItem(favKey(), JSON.stringify(favs)); renderLib(); if ($('favDlg').classList.contains('open')) renderFavDlg(); updateMain();
 }
 $('mainBtn').onclick = () => { if (!cur) return; if (cur.words.length) { const sn = nowSentence(); if (sn) toggleFav(sn[0], sn[1]); updateMain(); return; } toggleMoment(); };
@@ -1498,7 +1498,7 @@ addEventListener('keydown', e => { if (e.key === 'Escape' && !$('reader').hidden
 // ---------- favourite lines (kept on this device) ----------
 // the "saved" pop-up shows the line you just saved
 function favToast(f, msg) {
-  toast(msg, false, 5000, { label: 'Copy', run: () => copyText(f.text) });
+  toast(msg, false, 5000, [{ label: 'See all', run: openFavs }, { label: 'Copy', run: () => copyText(f.text) }]);
   const q = document.createElement('div'); q.className = 'tq'; q.textContent = `“${f.text}”`; $('toast').prepend(q);
 }
 const COPY_ICON = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M15.5 8.5V6.5a2 2 0 0 0-2-2h-7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h2"/></svg>';

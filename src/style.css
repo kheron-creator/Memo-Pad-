@@ -587,9 +587,12 @@ body.padmode .view{min-height:min(470px,60vh)}
 .pq small{display:block;color:var(--dim);font-size:13px;font-weight:500;margin-top:2px}
 .pq.new{animation:pqhi 1.8s}
 @keyframes pqhi{0%{background:#25DD5F33}100%{background:transparent}}
-.ppil{display:grid;grid-template-columns:110px 1fr 24px;align-items:center;gap:10px;padding:8px 4px;font-size:16px;font-weight:600}
-.ppil i{height:8px;border-radius:4px;background:#26262c;position:relative;overflow:hidden;display:block}
-.ppil i b{position:absolute;left:0;top:0;bottom:0;border-radius:4px;background:#fff}
-.ppil i b.low{background:var(--amber)}
+.ppil{display:grid;grid-template-columns:110px 1fr 26px;align-items:center;gap:10px;padding:6px 4px;font-size:16px;font-weight:600;min-height:44px}
+.ppil input{width:100%;accent-color:#fff;height:28px;margin:0}
+.ppil.unset input{opacity:.35}
+.padadd{display:flex;gap:8px;margin:10px 0 2px}
+.padadd input{flex:1;min-width:0;height:44px;border-radius:14px;border:1px solid #2e2e34;background:#1b1b20;padding:0 14px;font-size:16px;outline:none}
+.padadd input:focus{border-color:#55555c}
+.padadd button{border:0;border-radius:14px;background:var(--green);color:#000;font-family:var(--head);font-weight:700;font-size:14px;padding:0 16px;min-height:44px}
 .ppil em{font-style:normal;text-align:right;color:#ccc}
 .pempty{color:var(--mute);font-size:15px;padding:12px 4px;line-height:1.4}

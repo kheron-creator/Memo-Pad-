@@ -87,7 +87,7 @@ $('authForm').onsubmit = async e => {
   else m.textContent = '';
 };
 $('authGoogle').onclick = async () => {
-  const { error } = await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: location.origin + '/' } });
+  const { error } = await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: location.origin + '/', queryParams: { prompt: 'select_account' } } });
   if (error) { $('authMsg').className = 'authmsg'; $('authMsg').textContent = error.message; }
 };
 $('signOut').onclick = async () => {

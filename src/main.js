@@ -236,7 +236,6 @@ async function addFile(f, preCompressed) {
     const saved = Math.max(0, Math.round((1 - out.size / before) * 100));
     toast(out === f ? `Added "${t.title}" (${mb(out.size)}).` : `Compressed ${mb(before)} → ${mb(out.size)}${saved ? ` (${saved}% smaller)` : ''}. Saved to MemoPad ✓`);
     storageUsed += out.size; refreshStorage();
-    enqueueTranscribe(t, true);
   } catch (err) {
     prog(null); status('');
     toast(`Could not add ${f.name}: ${err.message || err}.`, true, 8000);
@@ -457,9 +456,9 @@ async function select(t) {
     renderMeta();
     search.q = ''; $('q').value = ''; $('sbar').classList.remove('has'); $('sbar').classList.add('mini'); $('qc').textContent = '';
     status(t._txMsg || ''); prog(null); renderLib(); renderChapters(); renderTranscript(); drawOverview(); updateMain();
-  } catch (err) { console.error(err); }
+  } catch (err) { reportErr(err); }
   try { await loadAudio(t); } catch (err) { console.error(err); if (cur === t) status('Could not load this audio (' + (err && err.message || err) + '). Close MemoPad and open it again.', true); }
-  if (own && !t.words.length && navigator.onLine) enqueueTranscribe(t, true); // like Voice Memos: no transcript yet, so start one
+  // transcripts only start when you choose ⋯ → Transcribe (running them by themselves slowed everything down)
 }
 // cached copy first (works offline), otherwise a signed URL from the private bucket
 async function loadAudio(t) {
@@ -1206,7 +1205,20 @@ $('expSrt').onclick = () => {
 
 // ---------- main loop ----------
 let favTick = 0, ovTick = 0, looping = false;
+// if something goes wrong, say what it was (so it can be fixed) and keep the player running
+const seenErr = new Set();
+function reportErr(err) {
+  const m = String((err && (err.message || err.reason && err.reason.message)) || err || 'unknown');
+  console.error(err); if (seenErr.has(m)) return; seenErr.add(m);
+  status('Something went wrong: ' + m.slice(0, 140) + '. Tell PT what this says.', true);
+}
+addEventListener('error', e => reportErr(e.error || e.message));
+addEventListener('unhandledrejection', e => reportErr(e.reason));
 function loop() {
+  requestAnimationFrame(loop); // keep going even if one frame fails
+  try { frame(); } catch (err) { reportErr(err); }
+}
+function frame() {
   if (cur) {
     const t = audio.currentTime; $('clock').textContent = clockFmt(t);
     const k = chapterAt(t); if (k !== lastChap) { lastChap = k; $('chapnow').textContent = k >= 0 && cur.chapters.length > 1 ? `Chapter ${k + 1} · ${cur.chapters[k].title}` : ''; $('clist').querySelectorAll('.chap').forEach(el => el.classList.toggle('on', +el.dataset.k === k)); updateMediaSession(); }
@@ -1215,7 +1227,7 @@ function loop() {
     tickStats(t); tickPlaylist(t); tickRep(t); if (!$('reader').hidden) tickReader(t);
     updateTranscript(); if (++ovTick % 6 === 0) drawOverview();
   }
-  drawWave(); updateLibRow(); requestAnimationFrame(loop);
+  drawWave(); updateLibRow();
 }
 addEventListener('resize', drawOverview);
 audio.addEventListener('seeked', () => { userScrollUntil = 0; lastW = -2; updateTranscript(); scrollToActive(true); drawOverview(); });

@@ -452,10 +452,13 @@ async function select(t) {
   $('ttl').contentEditable = own ? 'true' : 'false';
   $('emptycard').style.display = 'none'; $('ttl').textContent = t.title;
   const d = new Date(t.added); $('sub').textContent = `${d.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'short' })}   ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  renderMeta();
-  search.q = ''; $('q').value = ''; $('sbar').classList.remove('has'); $('sbar').classList.add('mini'); $('qc').textContent = '';
-  status(t._txMsg || ''); prog(null); renderLib(); renderChapters(); renderTranscript(); drawOverview(); updateMain();
-  await loadAudio(t);
+  // the screen updates must never stop the audio from loading
+  try {
+    renderMeta();
+    search.q = ''; $('q').value = ''; $('sbar').classList.remove('has'); $('sbar').classList.add('mini'); $('qc').textContent = '';
+    status(t._txMsg || ''); prog(null); renderLib(); renderChapters(); renderTranscript(); drawOverview(); updateMain();
+  } catch (err) { console.error(err); }
+  try { await loadAudio(t); } catch (err) { console.error(err); if (cur === t) status('Could not load this audio (' + (err && err.message || err) + '). Close MemoPad and open it again.', true); }
   if (own && !t.words.length && navigator.onLine) enqueueTranscribe(t, true); // like Voice Memos: no transcript yet, so start one
 }
 // cached copy first (works offline), otherwise a signed URL from the private bucket
@@ -636,7 +639,8 @@ audio.onpause = () => { $('playIcon').setAttribute('d', 'M18 10 L54 32 L18 54 Z'
 // if the audio link has run out (e.g. the tab was left open for a long time), get a fresh one and carry on from the same spot
 let relinking = false;
 async function relink(play) {
-  const t = cur; if (!t || relinking || !srcUrl || srcUrl.startsWith('blob:')) return false;
+  const t = cur; if (!t || relinking || !srcUrl || (srcUrl.startsWith('blob:') && !t.audio_path)) return false;
+  if (srcUrl.startsWith('blob:')) t.blob = null; // the copy saved on this device won't play: use the online one
   relinking = true; const at = audio.currentTime || +localStorage.getItem('mp.pos.' + t.id) || 0;
   try {
     const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(t.audio_path, SIGN_SECS);
@@ -648,7 +652,7 @@ async function relink(play) {
 }
 audio.onerror = () => {
   if (!cur || !audio.src) return;
-  if (srcUrl && !srcUrl.startsWith('blob:') && !audio._relinked) { audio._relinked = true; relink(Date.now() - playReqAt < 8000).then(ok => { if (!ok) status('This audio could not play. Check your connection and try again.', true); }); return; }
+  if (srcUrl && !audio._relinked && navigator.onLine) { audio._relinked = true; relink(Date.now() - playReqAt < 8000).then(ok => { if (!ok) status('This audio could not play. Check your connection and try again.', true); }); return; }
   status('This audio could not play. Check your connection and try again.', true);
 };
 let playReqAt = 0;

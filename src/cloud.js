@@ -46,15 +46,18 @@ function db() {
     try {
       const r = indexedDB.open('memopad', 1);
       r.onupgradeneeded = () => { r.result.createObjectStore('memos', { keyPath: 'id' }); r.result.createObjectStore('audio'); };
-      r.onsuccess = () => res(r.result); r.onerror = () => res(null);
+      r.onsuccess = () => res(r.result); r.onerror = r.onblocked = () => res(null); setTimeout(() => res(null), 4000);
     } catch { res(null); }
   });
   return dbp;
 }
+// never wait forever: on some phones the on-device store can get stuck, and then MemoPad would never load the audio
 function req(store, mode, fn) {
   return db().then(d => d && new Promise(res => {
-    try { const q = fn(d.transaction(store, mode).objectStore(store)); q.onsuccess = () => res(q.result); q.onerror = () => res(null); }
-    catch { res(null); }
+    let done = false; const fin = v => { if (!done) { done = true; clearTimeout(tm); res(v); } };
+    const tm = setTimeout(() => fin(null), mode === 'readonly' ? 4000 : 20000);
+    try { const tx = d.transaction(store, mode), q = fn(tx.objectStore(store)); q.onsuccess = () => fin(q.result); q.onerror = () => fin(null); tx.onabort = tx.onerror = () => fin(null); }
+    catch { fin(null); }
   }));
 }
 export const cacheAll = () => req('memos', 'readonly', s => s.getAll()).then(a => a || []);

@@ -1807,6 +1807,14 @@ $('vfClose').onclick = e => { e.stopPropagation(); closeVizFull(); };
 $('vfPlay').onclick = e => { e.stopPropagation(); togglePlay(); vfPoke(); };
 holdable($('vfPrev'), -1); holdable($('vfNext'), 1);
 ['vfPrev', 'vfNext'].forEach(id => $(id).addEventListener('click', vfPoke));
+// with a mouse: move near the top of the screen to bring up the view options
+{ let topT = 0; const vf = $('vFull');
+  vf.addEventListener('mousemove', e => {
+    if (e.clientY < 140 || e.target.closest('.vftop')) { vf.classList.add('top'); clearTimeout(topT); }
+    else if (vf.classList.contains('top')) { clearTimeout(topT); topT = setTimeout(() => vf.classList.remove('top'), 1200); }
+  });
+  vf.addEventListener('mouseleave', () => { clearTimeout(topT); topT = setTimeout(() => vf.classList.remove('top'), 1200); });
+}
 // tap the screen (anywhere that isn't a button) to pause or play
 $('vFull').addEventListener('click', e => { if (e.target.closest('button')) { vfPoke(); return; } togglePlay(); vfPoke(); });
 { let tap = null;

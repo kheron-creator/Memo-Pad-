@@ -475,6 +475,7 @@ body.resizing{cursor:col-resize;user-select:none}
 .vfctl{left:0;right:0;justify-content:center}
 .vfull .vftop,.vfull .vfctl{transition:opacity .3s}
 .vfull:not(.ctl) .vftop,.vfull:not(.ctl) .vfctl{opacity:0;pointer-events:none}
+.vfull.top .vftop{opacity:1;pointer-events:auto}
 
 /* Voice Memos style row player */
 .item.vm.on:has(.vexp){flex-wrap:wrap;background:#ffffff0c}

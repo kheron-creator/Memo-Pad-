@@ -299,7 +299,7 @@ function libMenu(t, row) {
   const items = [
     own && ['Rename', '✎', () => renameInList(t, row)],
     own && !hasTx && ['Transcribe', '✍', () => { t._txFailed = false; enqueueTranscribe(t, false); }],
-    hasTx && ['Favourite this line', '☆', () => { const sn = nowSentence(); if (sn) toggleFav(sn[0], sn[1]); }],
+    hasTx && ['Favourite this line', '☆', () => $('mainBtn').click()],
     hasTx && ['Copy transcript', '⧉', () => copyText(t.words.map(w => w.text).join(' ').replace(/\s+([,.!?;:])/g, '$1'))],
     ['Edit in the full player', '〰', () => closeLib()],
     ['Share', '↗', () => $('shareBtn').click()],
@@ -1072,7 +1072,7 @@ function updateMain() {
   const b = $('mainBtn'); b.disabled = !cur; b.classList.add('fav');
   if (!cur) { b.textContent = '☆ FAVOURITE'; return; }
   let on = false;
-  if (cur.words.length) { const sn = nowSentence(); on = !!sn && favIndex(sn[0], sn[1]) >= 0; }
+  if (cur.words.length) { const sn = justHeard(); on = !!sn && favIndex(sn[0], sn[1]) >= 0; }
   else { const mo = curMoment(); on = !!mo && favIndex(mo.j, mo.k) >= 0; }
   b.textContent = on ? '★ FAVOURITED' : '☆ FAVOURITE';
 }
@@ -1088,7 +1088,7 @@ function toggleMoment() {
   else { favs.unshift({ m: cur.id, ...mo }); toast('Saved to favourites ★', false, 5000, { label: 'See all', run: openFavs }); }
   localStorage.setItem(favKey(), JSON.stringify(favs)); renderLib(); if ($('favDlg').classList.contains('open')) renderFavDlg(); updateMain();
 }
-$('mainBtn').onclick = () => { if (!cur) return; if (cur.words.length) { const sn = nowSentence(); if (sn) toggleFav(sn[0], sn[1]); updateMain(); return; } toggleMoment(); };
+$('mainBtn').onclick = () => { if (!cur) return; if (cur.words.length) { const sn = justHeard(); if (sn) toggleFav(sn[0], sn[1]); updateMain(); return; } toggleMoment(); };
 function prog(p) { $('prog').style.display = p == null ? 'none' : 'block'; $('prog').firstChild.style.width = (p || 0) + '%'; }
 // automatic transcription, like Voice Memos: every new memo joins a queue and is transcribed in the background
 // phones and small tablets: transcribing a long track by itself can freeze the app, so only short ones run automatically
@@ -1449,6 +1449,25 @@ function sentenceAt(i) {
 }
 const sentStart = j => Math.max(0, (dispSt[j] ?? cur.words[j].start) - 0.05);
 const nowSentence = () => cur && cur.words.length ? sentenceAt(Math.max(0, activeWord(audio.currentTime))) : null; // the affirmation playing now
+// for ☆ FAVOURITE: just the short phrase you heard. Long sentences are cut at pauses and commas, and if
+// the next phrase has only just begun, it takes the one that just finished
+function phrasesOf(j, k) { // a sentence cut into short phrases: at pauses and commas, then long pieces split evenly
+  const W = cur.words, cuts = []; let a = j;
+  for (let q = j; q <= k; q++) { const gap = q < k ? W[q + 1].start - W[q].end : 9; if (q === k || (q - a + 1 >= 3 && (gap > 0.35 || /[,;:—–]$/.test(W[q].text)))) { cuts.push([a, q]); a = q + 1; } }
+  const out = [];
+  cuts.forEach(([x, y]) => { const n = y - x + 1, m = Math.ceil(n / 12), size = Math.ceil(n / m); for (let z = x; z <= y; z += size) out.push([z, Math.min(y, z + size - 1)]); });
+  return out;
+}
+function justHeard() {
+  if (!cur || !cur.words.length) return null;
+  const t = audio.currentTime, i = Math.max(0, activeWord(t)), [j, k] = sentenceAt(i), parts = phrasesOf(j, k);
+  let x = parts.findIndex(([, q]) => i <= q); if (x < 0) x = parts.length - 1;
+  if (t - sentStart(parts[x][0]) < 1.2) { // the next phrase has barely started: you mean the one that just finished
+    if (x > 0) return parts[x - 1];
+    if (j > 0) { const [pj, pk] = sentenceAt(j - 1), pp = phrasesOf(pj, pk); return pp[pp.length - 1]; }
+  }
+  return parts[x];
+}
 
 // ---------- repeat one affirmation 3, 5 or 10 times ----------
 let rep = null, repHide = 0;
@@ -1503,6 +1522,7 @@ function favToast(f, msg) {
   const q = document.createElement('div'); q.className = 'tq'; q.textContent = `“${f.text}”`; $('toast').prepend(q);
 }
 const COPY_ICON = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M15.5 8.5V6.5a2 2 0 0 0-2-2h-7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h2"/></svg>';
+function copyQuiet(t) { try { navigator.clipboard.writeText(t).catch(() => {}); } catch {} } // copy without a message (the favourite toast already shows it)
 async function copyText(t) {
   try { await navigator.clipboard.writeText(t); }
   catch { const a = document.createElement('textarea'); a.value = t; a.style.cssText = 'position:fixed;opacity:0'; document.body.appendChild(a); a.select(); try { document.execCommand('copy'); } catch {} a.remove(); }
@@ -1539,7 +1559,7 @@ function toggleFav(j, k) {
   if (x >= 0) { const f = favs.splice(x, 1)[0]; toast(f.pp ? 'Removed from favourites. It stays in your Progress Pad Quotes.' : 'Removed from favourites.', false, 2500); }
   else {
     const W = cur.words, f = { m: cur.id, j, k, t0: sentStart(j), t1: W[k].end + 0.35, text: W.slice(j, k + 1).map(w => w.text).join(' ') };
-    favs.unshift(f); favToast(f, 'Saved to favourites ★'); quoteToPad(f, cur.title);
+    favs.unshift(f); copyQuiet(f.text); favToast(f, 'Saved to favourites and copied ★'); quoteToPad(f, cur.title);
   }
   localStorage.setItem(favKey(), JSON.stringify(favs)); markFavs(); renderLib(); if ($('favDlg').classList.contains('open')) renderFavDlg();
 }
@@ -1714,7 +1734,7 @@ async function quoteToPad(f, title) {
   if (!navigator.onLine) { toast('Saved here. It will not reach Progress Pad Quotes while you are offline.', true); return; }
   const { data, error } = await supabase.from('writing_entries').insert({ user_id: user.id, on_date: dayOf(), kind: 'quotes', title: f.text.slice(0, 500), notes: `From "${title}" on MemoPad` }).select('id').single();
   if (error) { toast('Saved here, but it could not reach Progress Pad: ' + error.message, true); return; }
-  f.pp = data.id; localStorage.setItem(favKey(), JSON.stringify(favs)); favToast(f, 'Saved to favourites and your Progress Pad Quotes ★');
+  f.pp = data.id; localStorage.setItem(favKey(), JSON.stringify(favs)); favToast(f, 'Saved to favourites and your Progress Pad Quotes, and copied ★');
 }
 
 

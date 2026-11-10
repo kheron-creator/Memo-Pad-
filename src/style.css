@@ -551,3 +551,11 @@ body.resizing{cursor:col-resize;user-select:none}
 .cats button.lovedcat.on{color:#fff}
 .item.vm:has(.vpk){flex-wrap:wrap;background:#ffffff0c}
 .item.vm:has(.vpk) .vacts{display:none}
+/* Lofi rain scenes fill the whole full screen; the affirmation floats on top */
+.vfull.lofi canvas{position:absolute;inset:0;margin:0;height:100%}
+.vfull.lofi .vfsent{position:relative;z-index:1;margin-top:auto;text-shadow:0 2px 14px #000c}
+.vfull.lofi .vftop,.vfull.lofi .vfctl{z-index:2}
+.vfull.lofi-glass .vfsent{margin:auto 0;padding-bottom:0;color:#ffffffd8;text-shadow:0 0 18px #ffffff70,0 0 2px #fff6}
+.vfull.lofi .rw{color:#ffffff60}
+.vfull.lofi .rw.past{color:#ffffffc0}
+.vfull.lofi .rw.now{color:#fff;text-shadow:0 0 18px rgba(255,255,255,.7)}

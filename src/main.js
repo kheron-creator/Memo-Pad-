@@ -98,7 +98,7 @@ $('signOut').onclick = async () => {
 // ---------- start ----------
 async function start(u) {
   if (user && user.id === u.id) return;
-  user = u;
+  user = u; setTimeout(() => { try { padData = null; if (vizStyle === 'pad') padLoad(); } catch {} }, 0);
   $('auth').hidden = true; $('app').hidden = false;
   $('whoTxt').textContent = u.email || 'Signed in'; $('whoSide').textContent = u.email || '';
   // instant: show the offline cache, then refresh from Supabase
@@ -738,8 +738,8 @@ function sizeCanvas(c) { const r = c.getBoundingClientRect(), d = devicePixelRat
 const PX_PER_SEC = () => wv.width / 7.5; // about 7.5 seconds visible, like a voice memo
 function rrect(ctx, x, y, w, h, r) { ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(x, y, w, h, r); else ctx.rect(x, y, w, h); ctx.fill(); }
 // ---------- visualiser styles (driven by the memo's own sound levels, so it works with the screen locked or in the car) ----------
-let vizStyle = (v => v === 'black' ? 'time' : ['wave', 'bars', 'circle', 'time', 'lofi'].includes(v) ? v : 'wave')(localStorage.getItem('mp.viz')), vizEnv = 0, vizHist = new Array(64).fill(0);
-function setViz(v) { vizStyle = v; localStorage.setItem('mp.viz', v); try { lofiMark(); } catch {} $('waveWrap').classList.toggle('viz', v !== 'wave'); document.querySelectorAll('#vizSw button, #vfSw button').forEach(b => b.classList.toggle('on', b.dataset.v === v)); }
+let vizStyle = (v => v === 'black' ? 'time' : ['wave', 'bars', 'circle', 'time', 'lofi', 'pad'].includes(v) ? v : 'wave')(localStorage.getItem('mp.viz')), vizEnv = 0, vizHist = new Array(64).fill(0);
+function setViz(v) { vizStyle = v; localStorage.setItem('mp.viz', v); try { lofiMark(); } catch {} try { padShow(v === 'pad'); } catch {} $('waveWrap').classList.toggle('viz', v !== 'wave'); document.querySelectorAll('#vizSw button, #vfSw button').forEach(b => b.classList.toggle('on', b.dataset.v === v)); }
 document.querySelectorAll('#vizSw button, #vfSw button').forEach(b => b.onclick = e => { e.stopPropagation(); if (b.dataset.v === 'lofi' && vizStyle === 'lofi') nextLofiScene(); setViz(b.dataset.v); });
 setViz(vizStyle);
 function level(t) { if (!cur || !cur.peaks) return 0; const p = cur.peaks, i = Math.floor(t * BPS); let m = 0, n = 0; for (let j = i - 1; j <= i + 1; j++) if (p[j] != null) { m += p[j]; n++; } return n ? m / n : 0; }
@@ -983,6 +983,7 @@ function drawViz(d, cv = wv, wx = cv.getContext('2d'), style = vizStyle) {
   wx.clearRect(0, 0, W, H); wx.fillStyle = '#0b0b0d'; wx.fillRect(0, 0, W, H);
   const cx = W / 2, cy = H / 2, M = Math.min(W, H), e = vizEnv;
   const band = live ? (k => Math.max(0.03, Math.min(1, live[k % 32] * 1.15))) : k => { const N = 32, f = k / N; return Math.max(0.03, e * (0.5 + 0.5 * Math.sin(k * 0.9 + now * 4.2 + vizHist[k % 64] * 7)) * (1 - f * 0.55) + vizHist[Math.min(63, k)] * 0.25); };
+  if (style === 'pad') { drawPadWave(cv, wx, d, band); return; } // Progress Pad: a thin wave on top, the pad below
   if (style === 'lofi') { drawLofi(cv, wx, d, band, e, now); return; } // a calm co-working scene
   if (style === 'time') { drawListenTime(cv, wx, d, band, e, now); return; } // your listening totals, moving with the sound
   if (style === 'bars') {
@@ -1014,7 +1015,7 @@ let vfWake = null;
 function closeVizFull() { $('vFull').hidden = true; exitFull(); try { vfWake && vfWake.release(); } catch {} vfWake = null; }
 function drawVizFull() {
   if ($('vFull').hidden || !cur) return; const d = sizeCanvas(vfc), t = audio.currentTime || 0;
-  drawViz(d, vfc, vfc.getContext('2d'), vizStyle);
+  drawViz(d, vfc, vfc.getContext('2d'), vizStyle === 'pad' ? 'bars' : vizStyle);
   $('vfPlay').classList.toggle('on', !audio.paused);
   if (cur.words.length) { const a = Math.max(0, activeWord(t)), [j, e] = sentenceAt(a); if (j !== vfShown) { vfShown = j; const R = $('vfSent'); R.innerHTML = ''; for (let i = j; i <= e; i++) { const sp = document.createElement('span'); sp.className = 'rw'; sp.dataset.i = i; sp.textContent = cur.words[i].text; R.append(sp, ' '); } } $('vfSent').querySelectorAll('.rw').forEach(sp => { const i = +sp.dataset.i; sp.classList.toggle('past', i < a); sp.classList.toggle('now', i === a); }); }
   else if (vfShown !== -2) { vfShown = -2; $('vfSent').textContent = cur.title; }
@@ -1870,9 +1871,101 @@ async function quoteToPad(f, title) {
   if (!navigator.onLine) { toast('Saved here. It will not reach Progress Pad Quotes while you are offline.', true); return; }
   const { data, error } = await supabase.from('writing_entries').insert({ user_id: user.id, on_date: dayOf(), kind: 'quotes', title: f.text.slice(0, 500), notes: `From "${title}" on MemoPad` }).select('id').single();
   if (error) { toast('Saved here, but it could not reach Progress Pad: ' + error.message, true); return; }
-  f.pp = data.id; localStorage.setItem(favKey(), JSON.stringify(favs)); favToast(f, 'Saved to favourites and your Progress Pad Quotes, and copied ★');
+  f.pp = data.id; localStorage.setItem(favKey(), JSON.stringify(favs));
+  if (padData) { padData.quotes.unshift({ id: data.id, title: f.text.slice(0, 500), notes: `From "${title}" on MemoPad` }); padNewQ = data.id; if (vizStyle === 'pad') { padSec = 'quotes'; padRender(); } } favToast(f, 'Saved to favourites and your Progress Pad Quotes, and copied ★');
 }
 
+
+// ---------- Progress Pad inside the display: Today, Mind Sweep, Done, Quotes, Pillars ----------
+// Only loads when you open Pad. Same login and database as the Progress Pad website.
+const PAD_SECS = [['today', 'Today'], ['sweep', 'Mind Sweep'], ['done', 'Done'], ['quotes', 'Quotes'], ['pillars', 'Pillars']];
+const PILLARS = ['mentally', 'emotionally', 'professionally', 'physically', 'socially', 'romantically'];
+let padSec = (k => PAD_SECS.some(x => x[0] === k) ? k : 'today')(localStorage.getItem('mp.padsec')), padData = null, padAt = 0, padBusy = false, padNewQ = '';
+const padDone = {}; // mind sweep id -> the Done entry we added, so an untick can take it back off
+function drawPadWave(cv, wx, d, band) {
+  const W = cv.width, y = 62 * d, h = 26 * d, n = Math.floor(W / (6 * d));
+  for (let i = 0; i < n; i++) { const v = band(i % 32), bh = Math.max(2 * d, v * h); wx.fillStyle = i < n / 2 ? '#ffffff' : '#ffffff55'; wx.fillRect(i * 6 * d + d, y - bh / 2, 3 * d, bh); }
+}
+function padShow(on) {
+  const v = $('padView'); if (!v) return; v.hidden = !on; $('waveWrap').classList.toggle('pad', on); document.body.classList.toggle('padmode', on);
+  if (on) { padRender(); if (!padData || Date.now() - padAt > 30000) padLoad(); }
+}
+async function padLoad() {
+  if (!user || padBusy) return; if (!navigator.onLine) { padRender('You are offline. Your pad will show when you are back online.'); return; }
+  padBusy = true; const day = dayOf(), u = user.id;
+  try {
+    const [as, st, ms, wr, qu, pi] = await Promise.all([
+      supabase.from('date_assignments').select('kind,trigger_id,scenario_id,position').eq('user_id', u).eq('on_date', day).order('position'),
+      supabase.from('date_trigger_states').select('trigger_id,status,times_done').eq('user_id', u).eq('on_date', day),
+      supabase.from('mind_sweep_items').select('id,title,status,on_date,sort_order,priority,updated_at').eq('user_id', u).or(`status.eq.todo,and(status.eq.achieved,updated_at.gte."${day}T00:00:00Z")`).order('on_date', { ascending: false }).limit(200),
+      supabase.from('writing_entries').select('id,title,created_at').eq('user_id', u).eq('on_date', day).eq('kind', 'done').order('created_at', { ascending: false }),
+      supabase.from('writing_entries').select('id,title,notes,on_date').eq('user_id', u).eq('kind', 'quotes').order('created_at', { ascending: false }).limit(30),
+      supabase.from('pillar_entries').select('pillar_id,rating').eq('user_id', u).eq('on_date', day),
+    ]);
+    const err = [as, st, ms, wr, qu, pi].find(r => r.error); if (err) throw err.error;
+    // today's triggers: ones planned on their own, plus the ones inside any planned routine
+    const ids = []; (as.data || []).filter(a => a.kind === 'trigger' && a.trigger_id).forEach(a => ids.push(a.trigger_id));
+    const sc = (as.data || []).filter(a => a.scenario_id).map(a => a.scenario_id);
+    if (sc.length) { const r = await supabase.from('scenario_triggers').select('scenario_id,trigger_id,position').in('scenario_id', sc).order('position'); (r.data || []).forEach(x => { if (!ids.includes(x.trigger_id)) ids.push(x.trigger_id); }); }
+    let trig = [];
+    if (ids.length) { const r = await supabase.from('triggers').select('id,name').in('id', ids); const by = Object.fromEntries((r.data || []).map(t => [t.id, t])); trig = ids.map(id => by[id]).filter(Boolean); }
+    const sm = Object.fromEntries((st.data || []).map(x => [x.trigger_id, x]));
+    padData = {
+      day, trig: trig.map(t => ({ id: t.id, name: t.name, done: sm[t.id]?.status === 'achieved', times: sm[t.id]?.status === 'achieved' ? sm[t.id].times_done || 1 : 0 })),
+      sweep: (ms.data || []).sort((a, b) => (a.status === b.status ? 0 : a.status === 'todo' ? -1 : 1) || ((a.sort_order ?? 1e9) - (b.sort_order ?? 1e9)) || (a.on_date < b.on_date ? 1 : -1)),
+      done: wr.data || [], quotes: qu.data || [], pillars: Object.fromEntries((pi.data || []).map(p => [p.pillar_id, p.rating])),
+    };
+    padAt = Date.now(); padRender();
+  } catch (e) { padRender('Could not load your Progress Pad: ' + (e.message || e)); }
+  padBusy = false;
+}
+const padRow = (kind, id, text, done, extra = '') => `<button type="button" class="prow${done ? ' done' : ''}" data-k="${kind}" data-id="${id}"><span class="ptk"></span><span class="ptx">${esc(text)}</span>${extra}</button>`;
+const padH = t => `<div class="ph">${t}</div>`;
+function padPart(k) {
+  const P = padData;
+  if (k === 'today') {
+    const open = P.sweep.filter(x => x.status === 'todo');
+    return padH('Triggers') + (P.trig.length ? P.trig.map(t => padRow('trig', t.id, t.name, t.done, t.times > 1 ? `<span class="pct">×${t.times}</span>` : '')).join('') : '<div class="pempty">No triggers planned for today.</div>')
+      + padH('Next up') + (open.length ? open.slice(0, 3).map(x => padRow('sweep', x.id, x.title, false)).join('') : '<div class="pempty">Nothing open. Lovely.</div>');
+  }
+  if (k === 'sweep') { const open = P.sweep.filter(x => x.status === 'todo'), got = P.sweep.filter(x => x.status !== 'todo'); return padH(`Mind Sweep · ${open.length} open`) + (open.map(x => padRow('sweep', x.id, x.title, false)).join('') || '<div class="pempty">Nothing open.</div>') + (got.length ? padH('Done today') + got.map(x => padRow('sweep', x.id, x.title, true)).join('') : ''); }
+  if (k === 'done') return padH(`Done today · ${P.done.length}`) + (P.done.map(x => `<div class="pq">${esc(x.title)}</div>`).join('') || '<div class="pempty">Nothing yet today. Your first win will show here.</div>');
+  if (k === 'quotes') return padH('Quotes') + (P.quotes.map(x => `<div class="pq${x.id === padNewQ ? ' new' : ''}">${esc(x.title)}${x.notes ? `<small>${esc(x.notes.split('\n')[0])}</small>` : ''}</div>`).join('') || '<div class="pempty">Press ☆ FAVOURITE and the line lands here.</div>');
+  if (k === 'pillars') { const any = PILLARS.some(p => P.pillars[p] != null); return padH('Life Pillars today') + (any ? PILLARS.map(p => { const v = P.pillars[p]; return `<div class="ppil"><span>${p[0].toUpperCase() + p.slice(1)}</span><i><b class="${v != null && v <= 4 ? 'low' : ''}" style="width:${(v || 0) * 10}%"></b></i><em>${v ?? '–'}</em></div>`; }).join('') : '<div class="pempty">Not rated yet today. Rate them on the Progress Pad website.</div>'); }
+  return '';
+}
+function padRender(msg) {
+  if (!$('padView') || $('padView').hidden) return;
+  $('padSec').innerHTML = PAD_SECS.map(([k, n]) => `<button type="button" class="${k === padSec ? 'on' : ''}" data-s="${k}">${n}</button>`).join('');
+  const L = $('padList'), top = L.scrollTop;
+  L.innerHTML = msg ? `<div class="pempty">${esc(msg)}</div>` : padData ? padPart(padSec) : '<div class="pempty">Loading your Progress Pad…</div>';
+  if (!padNewQ) L.scrollTop = top; padNewQ = '';
+}
+$('padSec').addEventListener('click', e => { const b = e.target.closest('button[data-s]'); if (!b) return; e.stopPropagation(); padSec = b.dataset.s; localStorage.setItem('mp.padsec', padSec); $('padList').scrollTop = 0; padRender(); });
+$('padView').addEventListener('click', e => e.stopPropagation());
+$('padView').addEventListener('pointerdown', e => e.stopPropagation());
+$('padList').addEventListener('click', async e => {
+  const r = e.target.closest('.prow'); if (!r || !padData || r.disabled) return;
+  const id = r.dataset.id, day = padData.day, u = user.id; r.disabled = true;
+  try {
+    if (r.dataset.k === 'trig') {
+      const t = padData.trig.find(x => x.id === id); if (!t) return;
+      const next = !t.done, row = { user_id: u, on_date: day, trigger_id: id, status: next ? 'achieved' : 'todo', times_done: 1, updated_at: new Date().toISOString() };
+      const q = await supabase.from('date_trigger_states').upsert(row, { onConflict: 'user_id,on_date,trigger_id' }); if (q.error) throw q.error;
+      t.done = next; t.times = next ? 1 : 0; if (next) toast('Nice one ✓ ' + t.name, false, 2500);
+    } else {
+      const x = padData.sweep.find(y => y.id === id); if (!x) return;
+      const next = x.status === 'todo' ? 'achieved' : 'todo';
+      const q = await supabase.from('mind_sweep_items').update({ status: next, updated_at: new Date().toISOString() }).eq('id', id).eq('user_id', u); if (q.error) throw q.error;
+      x.status = next;
+      if (next === 'achieved') { const w = await supabase.from('writing_entries').insert({ user_id: u, on_date: day, kind: 'done', title: x.title.slice(0, 500), notes: 'Ticked off in MemoPad' }).select('id,title,created_at').single(); if (!w.error) { padDone[id] = w.data.id; padData.done.unshift(w.data); } toast('Nice one. Added to your Done list ✓', false, 2500); }
+      else if (padDone[id]) { await supabase.from('writing_entries').delete().eq('id', padDone[id]).eq('user_id', u); padData.done = padData.done.filter(d => d.id !== padDone[id]); delete padDone[id]; }
+    }
+    padRender();
+  } catch (err) { toast('Could not save to Progress Pad: ' + (err.message || err), true); r.disabled = false; }
+});
+padShow(vizStyle === 'pad');
+document.addEventListener('visibilitychange', () => { if (!document.hidden && vizStyle === 'pad' && Date.now() - padAt > 30000) padLoad(); });
 
 // ---------- true full screen and blackout ----------
 const fsEl = () => document.fullscreenElement || document.webkitFullscreenElement;

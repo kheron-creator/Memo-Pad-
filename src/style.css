@@ -602,6 +602,9 @@ body.padmode #meta{display:none}
 .padadd{display:flex;gap:8px;margin:10px 0 2px}
 .padadd input{flex:1;min-width:0;height:44px;border-radius:14px;border:1px solid #2e2e34;background:#1b1b20;padding:0 14px;font-size:16px;outline:none}
 .padadd input:focus{border-color:#55555c}
+.padadd .pmic{background:#1f1f24;color:#e8e8ea;padding:0;width:44px;display:grid;place-items:center}
+.padadd .pmic.on{background:var(--pink,#E10195);color:#fff;box-shadow:0 0 0 4px #E1019533}
+.padadd.listening input{border-color:#E1019588}
 .padadd button{border:0;border-radius:14px;background:var(--green);color:#000;font-family:var(--head);font-weight:700;font-size:14px;padding:0 16px;min-height:44px}
 .ppil em{font-style:normal;text-align:right;color:#ccc}
 .pempty{color:var(--mute);font-size:15px;padding:12px 4px;line-height:1.4}

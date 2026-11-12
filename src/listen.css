@@ -18,6 +18,23 @@ header{display:flex;justify-content:center;margin-bottom:14px}
 .rw.now{color:#fff;text-shadow:0 0 16px rgba(255,255,255,.5)}
 .lmsg{color:var(--mute);font-size:20px;font-weight:600}
 
+/* view styles: Captions (text only), Waves, Circle and Lofi, like the app's full screen view */
+.lviz{position:absolute;inset:0;width:100%;height:100%;display:block;z-index:0}
+.yt.cap .lviz{display:none}
+.lsw{position:absolute;top:10px;left:50%;transform:translateX(-50%);display:flex;gap:2px;background:#111113cc;border:1px solid #2c2c31;border-radius:18px;padding:3px;z-index:5;max-width:calc(100% - 20px);overflow-x:auto;scrollbar-width:none;transition:opacity .25s}
+.lsw::-webkit-scrollbar{display:none}
+.lsw button{border:0;background:none;color:#9a9aa0;font-weight:700;font-size:12px;padding:5px 11px;border-radius:14px;white-space:nowrap}
+.lsw button.on{background:#2a2a30;color:#fff}
+.yt.playing:not(.ctl) .lsw{opacity:0;pointer-events:none}
+.ych{top:50px}
+.lsent{position:relative;z-index:1}
+.yt:not(.cap) .lsent{align-items:flex-end;font-size:clamp(18px,3.4vw,34px);padding-bottom:72px;text-shadow:0 2px 14px #000c}
+.yt.lofi-glass .lsent{align-items:center;padding-bottom:64px}
+.yt:not(.cap) .rw{color:#ffffff60}
+.yt:not(.cap) .rw.past{color:#ffffffc0}
+.yt:not(.cap) .rw.now{color:#fff;text-shadow:0 0 18px rgba(255,255,255,.7)}
+body.full .yt:not(.cap) .lsent{font-size:clamp(24px,4.6vw,52px);padding-bottom:calc(110px + env(safe-area-inset-bottom))}
+
 /* centre play button and double-tap skip flashes */
 .ybig{position:absolute;left:50%;top:50%;width:68px;height:68px;margin:-34px 0 0 -34px;border:0;border-radius:50%;background:rgba(0,0,0,.55);display:grid;place-items:center;z-index:3;opacity:0;pointer-events:none;transition:opacity .25s}
 .ybig svg{width:34px;height:34px;fill:#fff}

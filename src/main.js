@@ -1878,7 +1878,8 @@ async function quoteToPad(f, title) {
 
 // ---------- Progress Pad inside the display: Today, Mind Sweep, Done, Quotes, Pillars ----------
 // Only loads when you open Pad. Same login and database as the Progress Pad website.
-const PAD_SECS = [['today', 'Today'], ['sweep', 'Mind Sweep'], ['done', 'Done'], ['quotes', 'Quotes'], ['pillars', 'Pillars']];
+const PAD_SECS = [['today', 'Today'], ['sweep', 'Mind Sweep'], ['done', 'Done'], ['gratitude', 'Gratitude'], ['reflections', 'Reflect'], ['quotes', 'Quotes'], ['pillars', 'Pillars']];
+const PAD_WRITE = { done: 'On your Done list', gratitude: 'Added to your Gratitude', reflections: 'Added to your Reflections', quotes: 'Added to your Quotes' };
 const PILLARS = ['mentally', 'emotionally', 'professionally', 'physically', 'socially', 'romantically'];
 let padSec = (k => PAD_SECS.some(x => x[0] === k) ? k : 'today')(localStorage.getItem('mp.padsec')), padData = null, padAt = 0, padBusy = false, padNewQ = '';
 let padFocus = false;
@@ -1899,7 +1900,7 @@ async function padLoad() {
       supabase.from('date_assignments').select('kind,trigger_id,scenario_id,position').eq('user_id', u).eq('on_date', day).order('position'),
       supabase.from('date_trigger_states').select('trigger_id,status,times_done').eq('user_id', u).eq('on_date', day),
       supabase.from('mind_sweep_items').select('id,title,status,on_date,sort_order,priority,updated_at').eq('user_id', u).or(`status.eq.todo,and(status.eq.achieved,updated_at.gte."${day}T00:00:00Z")`).order('on_date', { ascending: false }).limit(200),
-      supabase.from('writing_entries').select('id,title,created_at').eq('user_id', u).eq('on_date', day).eq('kind', 'done').order('created_at', { ascending: false }),
+      supabase.from('writing_entries').select('id,title,kind,created_at').eq('user_id', u).eq('on_date', day).in('kind', ['done', 'gratitude', 'reflections']).order('created_at', { ascending: false }),
       supabase.from('writing_entries').select('id,title,notes,on_date').eq('user_id', u).eq('kind', 'quotes').order('created_at', { ascending: false }).limit(30),
       supabase.from('pillar_entries').select('pillar_id,rating').eq('user_id', u).eq('on_date', day),
     ]);
@@ -1914,7 +1915,7 @@ async function padLoad() {
     padData = {
       day, trig: trig.map(t => ({ id: t.id, name: t.name, done: sm[t.id]?.status === 'achieved', times: sm[t.id]?.status === 'achieved' ? sm[t.id].times_done || 1 : 0 })),
       sweep: (ms.data || []).sort((a, b) => (a.status === b.status ? 0 : a.status === 'todo' ? -1 : 1) || ((a.sort_order ?? 1e9) - (b.sort_order ?? 1e9)) || (a.on_date < b.on_date ? 1 : -1)),
-      done: wr.data || [], quotes: qu.data || [], pillars: Object.fromEntries((pi.data || []).map(p => [p.pillar_id, p.rating])),
+      done: (wr.data || []).filter(x => x.kind === 'done'), gratitude: (wr.data || []).filter(x => x.kind === 'gratitude'), reflections: (wr.data || []).filter(x => x.kind === 'reflections'), quotes: qu.data || [], pillars: Object.fromEntries((pi.data || []).map(p => [p.pillar_id, p.rating])),
     };
     padAt = Date.now(); padRender();
   } catch (e) { padRender('Could not load your Progress Pad: ' + (e.message || e)); }
@@ -1926,7 +1927,9 @@ const padEditBox = (k, id, text) => `<form class="padedit" data-k="${k}" data-id
 const padPenBtn = (k, id) => `<button type="button" class="pedit" data-k="${k}" data-id="${id}" aria-label="Edit">${PAD_PEN}</button>`;
 const padRow = (kind, id, text, done, extra = '') => padEdit && padEdit.k === kind && padEdit.id === id ? padEditBox(kind, id, text) : `<div class="prw"><button type="button" class="prow${done ? ' done' : ''}" data-k="${kind}" data-id="${id}"><span class="ptk"></span><span class="ptx">${esc(text)}</span>${extra}</button>${kind === 'sweep' ? padPenBtn(kind, id) : ''}</div>`;
 const padText = (kind, x, inner) => padEdit && padEdit.k === kind && padEdit.id === x.id ? padEditBox(kind, x.id, x.title) : `<div class="pq${x.id === padNewQ ? ' new' : ''}"><div class="pqt">${inner}</div>${padPenBtn(kind, x.id)}</div>`;
-const padAdd = (kind, ph) => `<form class="padadd" data-k="${kind}"><input type="text" maxlength="500" placeholder="${ph}" enterkeyhint="done" autocomplete="off"><button type="submit" aria-label="Add">Add</button></form>`;
+const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+const PAD_MIC = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>';
+const padAdd = (kind, ph) => `<form class="padadd" data-k="${kind}"><input type="text" maxlength="500" placeholder="${ph}" enterkeyhint="done" autocomplete="off">${SpeechRec ? `<button type="button" class="pmic" aria-label="Talk instead of typing">${PAD_MIC}</button>` : ''}<button type="submit" aria-label="Add">Add</button></form>`;
 const padH = t => `<div class="ph">${t}</div>`;
 function padPart(k) {
   const P = padData;
@@ -1937,6 +1940,8 @@ function padPart(k) {
   }
   if (k === 'sweep') { const open = P.sweep.filter(x => x.status === 'todo'), got = P.sweep.filter(x => x.status !== 'todo'); return padAdd('sweep', 'Add to Mind Sweep…') + padH(`Mind Sweep · ${open.length} open`) + (open.map(x => padRow('sweep', x.id, x.title, false)).join('') || '<div class="pempty">Nothing open.</div>') + (got.length ? padH('Done today') + got.map(x => padRow('sweep', x.id, x.title, true)).join('') : ''); }
   if (k === 'done') return padAdd('done', 'Add a win to your Done list…') + padH(`Done today · ${P.done.length}`) + (P.done.map(x => padText('done', x, esc(x.title))).join('') || '<div class="pempty">Nothing yet today. Your first win will show here.</div>');
+  if (k === 'gratitude') return padAdd('gratitude', 'I’m grateful for…') + padH(`Gratitude today · ${P.gratitude.length}`) + (P.gratitude.map(x => padText('gratitude', x, esc(x.title))).join('') || '<div class="pempty">What are you grateful for today? Type it, or tap the mic and say it.</div>');
+  if (k === 'reflections') return padAdd('reflections', 'What went well? What would you change?') + padH(`Reflections today · ${P.reflections.length}`) + (P.reflections.map(x => padText('reflections', x, esc(x.title))).join('') || '<div class="pempty">How did today go? Type a line, or tap the mic and talk it out.</div>');
   if (k === 'quotes') return padAdd('quotes', 'Add a quote…') + padH('Quotes') + (P.quotes.map(x => padText('quotes', x, esc(x.title) + (x.notes ? `<small>${esc(x.notes.split('\n')[0])}</small>` : ''))).join('') || '<div class="pempty">Press ☆ FAVOURITE and the line lands here.</div>');
   if (k === 'pillars') return padH('Life Pillars today · slide to rate 1 to 10') + PILLARS.map(p => { const v = P.pillars[p]; return `<label class="ppil${v == null ? ' unset' : ''}"><span>${p[0].toUpperCase() + p.slice(1)}</span><input type="range" min="1" max="10" step="1" value="${v ?? 5}" data-p="${p}" aria-label="${p} rating"><em>${v ?? '–'}</em></label>`; }).join('');
   return '';
@@ -1974,7 +1979,20 @@ $('padList').addEventListener('click', async e => {
     padRender();
   } catch (err) { toast('Could not save to Progress Pad: ' + (err.message || err), true); r.disabled = false; }
 });
-// add to Mind Sweep, the Done list or Quotes, straight into the Progress Pad
+// talk instead of typing: the phone's own speech-to-text fills the box, then you press Add
+let padRec = null;
+function padMicStop() { if (padRec) { try { padRec.stop(); } catch { } } }
+$('padList').addEventListener('click', e => {
+  const b = e.target.closest('.pmic'); if (!b || !SpeechRec) return; e.preventDefault();
+  if (padRec) { padMicStop(); return; }
+  const f = b.closest('.padadd'), inp = f.querySelector('input'), start = inp.value.trim();
+  const rec = new SpeechRec(); rec.lang = navigator.language || 'en-GB'; rec.interimResults = true; rec.continuous = true;
+  rec.onresult = ev => { let t = ''; for (let i = 0; i < ev.results.length; i++) t += ev.results[i][0].transcript; inp.value = ((start ? start + ' ' : '') + t.trim()).slice(0, 500); };
+  rec.onerror = ev => { if (ev.error === 'not-allowed' || ev.error === 'service-not-allowed') toast('Allow the microphone to talk your entry in.', true); };
+  rec.onend = () => { padRec = null; b.classList.remove('on'); f.classList.remove('listening'); if (inp.value.trim()) inp.focus({ preventScroll: true }); };
+  try { rec.start(); padRec = rec; b.classList.add('on'); f.classList.add('listening'); inp.placeholder = 'Listening… tap the mic again to stop'; } catch { toast('Could not start the microphone.', true); }
+});
+// add to Mind Sweep, Done, Gratitude, Reflections or Quotes, straight into the Progress Pad
 $('padList').addEventListener('submit', async e => {
   e.preventDefault(); e.stopPropagation();
   const ed = e.target.closest('.padedit');
@@ -1982,15 +2000,16 @@ $('padList').addEventListener('submit', async e => {
     const inp = ed.querySelector('input'), text = inp.value.trim().slice(0, 500), k = ed.dataset.k, id = ed.dataset.id; if (!text) return; inp.disabled = true;
     const q = k === 'sweep' ? await supabase.from('mind_sweep_items').update({ title: text, updated_at: new Date().toISOString() }).eq('id', id).eq('user_id', user.id) : await supabase.from('writing_entries').update({ title: text }).eq('id', id).eq('user_id', user.id);
     if (q.error) { toast('Could not save that change: ' + q.error.message, true); inp.disabled = false; return; }
-    const list = k === 'sweep' ? padData.sweep : k === 'done' ? padData.done : padData.quotes, it = list.find(x => x.id === id); if (it) it.title = text;
+    const list = k === 'sweep' ? padData.sweep : padData[k] || [], it = list.find(x => x.id === id); if (it) it.title = text;
     padEdit = null; padRender(); toast('Saved ✓', false, 1500); return;
   }
+  padMicStop();
   const f = e.target.closest('.padadd'); if (!f || !padData || !user) return;
   const inp = f.querySelector('input'), text = inp.value.trim(); if (!text) return;
   const kind = f.dataset.k, day = padData.day, u = user.id; inp.disabled = true;
   try {
     if (kind === 'sweep') { const r = await supabase.from('mind_sweep_items').insert({ user_id: u, on_date: day, title: text.slice(0, 500), status: 'todo' }).select('id,title,status,on_date,sort_order,priority,updated_at').single(); if (r.error) throw r.error; padData.sweep.unshift(r.data); toast('Added to your Mind Sweep ✓', false, 2200); }
-    else { const r = await supabase.from('writing_entries').insert({ user_id: u, on_date: day, kind, title: text.slice(0, 500), notes: kind === 'quotes' ? 'Added in MemoPad' : null }).select('id,title,notes,created_at').single(); if (r.error) throw r.error; if (kind === 'done') { padData.done.unshift(r.data); toast('Nice one. On your Done list ✓', false, 2200); } else { padData.quotes.unshift(r.data); padNewQ = r.data.id; toast('Added to your Quotes ✓', false, 2200); } }
+    else { const r = await supabase.from('writing_entries').insert({ user_id: u, on_date: day, kind, title: text.slice(0, 500), notes: kind === 'quotes' ? 'Added in MemoPad' : null }).select('id,title,notes,created_at').single(); if (r.error) throw r.error; padData[kind].unshift(r.data); if (kind !== 'done') padNewQ = r.data.id; toast((kind === 'done' ? 'Nice one. ' : '') + PAD_WRITE[kind] + ' ✓', false, 2200); }
     inp.value = ''; padFocus = true; padRender();
   } catch (err) { toast('Could not save to Progress Pad: ' + (err.message || err), true); inp.disabled = false; }
 });

@@ -70,6 +70,8 @@ button{cursor:pointer}
 .top{display:flex;justify-content:space-between;align-items:center;padding:10px 20px 0}
 .toplogo{height:19px;opacity:.95;position:absolute;left:50%;transform:translateX(-50%)}
 .top{position:relative}
+.topr{display:flex;gap:8px;align-items:center}
+a.circ{text-decoration:none}
 .circ{width:48px;height:48px;border-radius:50%;border:0;background:#161618;display:grid;place-items:center;font-size:20px;color:#fff}
 .circ.ok{font-size:22px;font-weight:900}
 .title{text-align:center;padding:10px 26px 0}

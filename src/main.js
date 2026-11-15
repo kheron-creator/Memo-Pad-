@@ -305,6 +305,7 @@ function libMenu(t, row) {
     ['Edit in the full player', '〰', () => closeLib()],
     ['Share', '↗', () => $('shareBtn').click()],
     ['Add to a playlist', '+', () => openAddPl({ m: t.id, label: t.title })],
+    ['Open from a trigger', '⚡', () => openTrigPick(t)],
     own && ['Delete', '🗑', () => deleteTrack(t), 'del'],
   ].filter(Boolean);
   items.forEach(([label, ic, run, cls]) => { const x = document.createElement('button'); x.type = 'button'; if (cls) x.className = cls; x.innerHTML = `<span>${label}</span><i>${ic}</i>`; x.onclick = e => { e.stopPropagation(); m.remove(); run(); }; m.appendChild(x); });
@@ -570,6 +571,8 @@ $('shHere').onclick = () => shareLink(linkFor(cur, audio.currentTime), cur.title
 $('shClose').onclick = () => $('shDlg').classList.remove('open');
 $('shDlg').addEventListener('click', e => { if (e.target.id === 'shDlg') $('shDlg').classList.remove('open'); });
 // opening a shared link: remember it through sign in, then jump there
+// a link from a Progress Pad trigger (?tr=<trigger id>, with or without ?m=): the next finished listen ticks that trigger
+(() => { const q = new URLSearchParams(location.search); if (q.get('tr')) { sessionStorage.setItem('mp.deepTrig', JSON.stringify({ tr: q.get('tr'), m: q.get('m') || null })); if (!q.get('m')) history.replaceState(null, '', '/'); } })();
 const deep = (() => { const q = new URLSearchParams(location.search); if (q.get('m')) { sessionStorage.setItem('mp.deep', JSON.stringify({ m: q.get('m'), t: +q.get('t') || 0 })); history.replaceState(null, '', '/'); } try { return JSON.parse(sessionStorage.getItem('mp.deep')); } catch { return null; } })();
 function openDeep() {
   const d = deep && JSON.parse(sessionStorage.getItem('mp.deep') || 'null'); if (!d) return false;
@@ -1699,9 +1702,12 @@ async function loadPP() {
 }
 $('ppLog').onchange = () => { const p = ppPref(); p.log = $('ppLog').checked; ppSave(p); };
 $('ppTrig').onchange = () => { const p = ppPref(); p.trig = $('ppTrig').value; ppSave(p); if (p.trig) toast('Each finished listen will count toward that trigger.'); };
-function finishedTrack(t) { logListen(`Listened to "${t.title}" on MemoPad`, t.id); }
-async function logListen(title, key) {
-  const p = ppPref(); if (!p.log && !p.trig) return; if (!navigator.onLine) return;
+function finishedTrack(t) {
+  let trig = ''; try { const d = JSON.parse(sessionStorage.getItem('mp.deepTrig') || 'null'); if (d && (!d.m || d.m === t.id)) { trig = d.tr; sessionStorage.removeItem('mp.deepTrig'); } } catch {}
+  logListen(`Listened to "${t.title}" on MemoPad`, t.id, trig);
+}
+async function logListen(title, key, trigOverride) {
+  const p = { ...ppPref() }; if (trigOverride) p.trig = trigOverride; if (!p.log && !p.trig) return; if (!navigator.onLine) return;
   const day = dayOf(), once = `mp.logged.${user.id}.${day}.${key}`; if (localStorage.getItem(once)) return; localStorage.setItem(once, '1');
   try {
     if (p.log) { const r = await supabase.from('writing_entries').insert({ user_id: user.id, on_date: day, kind: 'done', title, notes: 'MemoPad' }); if (r.error) throw r.error; }
@@ -1719,6 +1725,46 @@ async function logListen(title, key) {
     toast('Nice work. Logged in your Progress Pad ✓', false, 3500);
   } catch (e) { localStorage.removeItem(once); toast('Could not log to Progress Pad: ' + e.message, true); }
 }
+
+// ---------- open a memo from a Progress Pad trigger: the trigger keeps a link straight to it ----------
+let trigFor = null, trigRows = [];
+const STAPLE = 'listen to affirmations';
+const trigLink = (t, id) => `${location.origin}/?m=${t.id}&tr=${id}`;
+async function openTrigPick(t) {
+  trigFor = t; $('trgQ').value = ''; $('trgNew').value = ''; $('trgList').innerHTML = '<div class="none">Loading your triggers…</div>'; $('trgDlg').classList.add('open');
+  let r = await supabase.from('triggers').select('id,name,emoji,link').eq('user_id', user.id).is('deleted_at', null).order('name');
+  if (r.error && /link/.test(r.error.message || '')) { $('trgList').innerHTML = '<div class="none">One setup step is still needed in Supabase before triggers can hold a link.</div>'; return; }
+  if (r.error) { $('trgList').innerHTML = `<div class="none">${esc('Could not load your triggers: ' + r.error.message)}</div>`; return; }
+  trigRows = (r.data || []).sort((a, b) => (b.name.trim().toLowerCase() === STAPLE) - (a.name.trim().toLowerCase() === STAPLE));
+  renderTrigPick();
+}
+function renderTrigPick() {
+  const q = $('trgQ').value.trim().toLowerCase(), L = $('trgList'); L.innerHTML = '';
+  const rows = trigRows.filter(x => !q || x.name.toLowerCase().includes(q));
+  if (!rows.length) L.innerHTML = '<div class="none">No triggers match. Name a new one below.</div>';
+  rows.forEach(x => {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'plpick';
+    const here = x.link && trigFor && x.link.includes('m=' + trigFor.id);
+    b.innerHTML = `${esc((x.emoji ? x.emoji + ' ' : '') + x.name)}${here ? '<span class="on">✓</span>' : ''}`;
+    b.onclick = () => linkTrig(x); L.appendChild(b);
+  });
+}
+async function linkTrig(x) {
+  const t = trigFor; if (!t) return;
+  const { error } = await supabase.from('triggers').update({ link: trigLink(t, x.id), updated_at: new Date().toISOString() }).eq('id', x.id).eq('user_id', user.id);
+  if (error) { toast('Could not save that trigger: ' + error.message, true); return; }
+  $('trgDlg').classList.remove('open'); toast(`Done. Tap 🎧 on "${x.name}" in your Progress Pad to come straight here.`, false, 5000);
+}
+$('trgQ').addEventListener('input', renderTrigPick);
+$('trgNewGo').onclick = async () => {
+  const n = $('trgNew').value.trim(); if (!n) { $('trgNew').focus(); return; } const t = trigFor; if (!t) return;
+  const ins = await supabase.from('triggers').insert({ user_id: user.id, name: n, emoji: '🎧' }).select('id,name').single();
+  if (ins.error) { toast('Could not create that trigger: ' + ins.error.message, true); return; }
+  await linkTrig(ins.data);
+};
+$('trgNew').addEventListener('keydown', e => { if (e.key === 'Enter') $('trgNewGo').click(); });
+$('trgClose').onclick = () => $('trgDlg').classList.remove('open');
+$('trgDlg').addEventListener('click', e => { if (e.target.id === 'trgDlg') $('trgDlg').classList.remove('open'); });
 
 // ---------- share a playlist by link ----------
 const b64e = o => btoa(unescape(encodeURIComponent(JSON.stringify(o)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');

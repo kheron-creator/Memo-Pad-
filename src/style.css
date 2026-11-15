@@ -292,6 +292,8 @@ body.dragging .card::after{content:'Drop to add';position:absolute;inset:10px;bo
 .statrow{display:flex;justify-content:space-between;align-items:center;width:100%;border:1px solid #2a2a30;background:#16161a;border-radius:14px;padding:10px 14px;margin:0 0 12px;font-weight:600;font-size:14px;color:#ddd;text-align:left}
 .statrow .go{color:var(--mute);font-size:18px}
 .ptby{display:flex;flex-direction:column;gap:8px}
+.ptby .pplink{display:flex;align-items:center;justify-content:center;gap:6px;border:1px solid #3a3a40;border-radius:14px;padding:9px 12px;font-size:13px;font-weight:600;color:#fff;text-decoration:none}
+.ptby .pplink:hover{border-color:#25DD5F}
 .ptby .acct{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12px;color:var(--mute);font-weight:600}
 .ptby .acct span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ptby .acct button{background:none;border:1px solid #3a3a40;border-radius:12px;padding:4px 10px;font-size:12px;font-weight:600;flex:0 0 auto}

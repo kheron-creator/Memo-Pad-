@@ -4,7 +4,7 @@
 import './create.css';
 import { audioPut, supabase, BUCKET, TABLE, trackToRow } from './cloud.js';
 import { VOICES, orb } from './voices.js';
-import { speakBlob } from './tts.js';
+import { speakBlob, elevenReason } from './tts.js';
 const $ = id => document.getElementById(id);
 const SR = 44100;
 let vMode = 'ai', mMode = 'calm', recBlob = null, voiceFileBlob = null, musicFileBuf = null, aiBuf = null, busy = false, outUrl = null, last = null;
@@ -229,7 +229,7 @@ $('aiMake').onclick = async () => {
   busy = true; $('aiMake').disabled = true; $('aiInfo').textContent = 'Making your beat… this takes about a minute.';
   try {
     const r = await fetch('/api/music', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tk}` }, body: JSON.stringify({ prompt }) });
-    if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error({ sign_in: 'please sign in to MemoPad again', not_configured: 'ElevenLabs is not switched on yet' }[e.error] || `ElevenLabs said no (${e.status || r.status})`); }
+    if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error({ sign_in: 'please sign in to MemoPad again', not_configured: 'ElevenLabs is not switched on yet' }[e.error] || `ElevenLabs said no (${e.status || r.status}${elevenReason(e) ? ', ' + elevenReason(e) : ''})`); }
     aiBuf = await decode(await r.blob());
     $('aiInfo').textContent = `Your beat is ready (${fmt(aiBuf.duration)}, it loops to fit). Tap Preview to hear it.`;
   } catch (err) { $('aiInfo').textContent = 'Could not make the beat: ' + (err.message || err); }

@@ -20,10 +20,12 @@ export default async function handler(req, res) {
   const speed = Math.min(1.2, Math.max(0.7, +body?.speed || 1)); // ElevenLabs allows 0.7 to 1.2
   if (!VOICES[voice]) return res.status(400).json({ error: 'voice' });
   if (!text || text.length > MAX_CHARS) return res.status(400).json({ error: 'text', max: MAX_CHARS });
-  const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voice}?output_format=mp3_44100_128`, {
+  const call = vs => fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voice}?output_format=mp3_44100_128`, {
     method: 'POST', headers: { 'xi-api-key': key, 'Content-Type': 'application/json', Accept: 'audio/mpeg' },
-    body: JSON.stringify({ text, model_id: 'eleven_multilingual_v2', voice_settings: { stability: 0.6, similarity_boost: 0.75, speed } }),
+    body: JSON.stringify({ text, model_id: 'eleven_multilingual_v2', voice_settings: vs }),
   });
+  let r = await call({ stability: 0.6, similarity_boost: 0.75, speed });
+  if ((r.status === 400 || r.status === 422) && speed !== 1) r = await call({ stability: 0.6, similarity_boost: 0.75 }); // pace not accepted: read at normal pace
   if (!r.ok) { const detail = await r.text().catch(() => ''); return res.status(502).json({ error: 'elevenlabs', status: r.status, detail: detail.slice(0, 300) }); }
   const buf = Buffer.from(await r.arrayBuffer());
   res.setHeader('Content-Type', 'audio/mpeg'); res.setHeader('Cache-Control', 'no-store');

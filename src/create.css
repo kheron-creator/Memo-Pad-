@@ -146,6 +146,12 @@ body.rd .cp{padding-bottom:calc(150px + env(safe-area-inset-bottom))}
 .signin input[type=password]{background:var(--bg);color:#fff;border:1px solid var(--line);border-radius:14px;padding:11px 14px;font:inherit;font-weight:600;flex:1;min-width:140px}
 .bb{border:0;border-radius:999px;height:42px;padding:0 14px;background:#2a2a30;color:#fff;font:600 14px Poppins,sans-serif;white-space:nowrap}
 body.beat .bb{background:var(--grad)}
+.ytres{display:grid;gap:8px;margin:8px 0}
+.ytres button{display:flex;gap:10px;align-items:center;text-align:left;background:#1f1f24;border:1.5px solid transparent;border-radius:14px;padding:6px;color:#fff}
+.ytres button:hover{border-color:#ffffff55}
+.ytres img{width:96px;height:54px;object-fit:cover;border-radius:8px;flex:none}
+.ytres b{display:block;font-size:14px;line-height:1.25;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.ytres small{font-size:12px;opacity:.7}
 .m-ai{background:linear-gradient(135deg,#E10195,#FFB000)}
 #aiRow{margin-bottom:12px}
 #aiPresets button.on{border-color:#fff}

@@ -159,6 +159,20 @@ async function loadBeat(autoplay) {
   });
 }
 
+/* ---------- YouTube search (needs YOUTUBE_API_KEY on Vercel; without it, YouTube's own search opens) ---------- */
+async function findBeats() {
+  const q = $('ytQ').value.trim() || 'lofi hip hop'; $('ytRes').innerHTML = '<p class="hint">Searching…</p>';
+  try {
+    const r = await fetch('/api/yt-search?q=' + encodeURIComponent(q));
+    if (r.status === 503) { $('ytRes').innerHTML = `<p class="hint">Search inside MemoPad isn't switched on yet. <a href="https://www.youtube.com/results?search_query=${encodeURIComponent(q)}" target="_blank" rel="noopener">Search on YouTube</a>, copy the link of a video you like, and paste it below.</p>`; return; }
+    if (!r.ok) throw new Error(r.status);
+    const { items } = await r.json();
+    $('ytRes').innerHTML = items.length ? items.map(x => `<button data-yt="https://www.youtube.com/watch?v=${x.id}"><img src="${esc(x.thumb)}" alt="" loading="lazy"><span><b>${esc(x.title)}</b><small>${esc(x.channel)}${x.live ? ' · live' : ''}</small></span></button>`).join('') : '<p class="hint">Nothing found. Try other words.</p>';
+  } catch { $('ytRes').innerHTML = '<p class="hint">Search did not work just now. Paste a YouTube link instead.</p>'; }
+}
+$('ytFind').onclick = findBeats; $('ytQ').onkeydown = e => { if (e.key === 'Enter') findBeats(); };
+$('ytRes').onclick = e => { const b = e.target.closest('button[data-yt]'); if (!b) return; [...$('presets').children].forEach(x => x.classList.remove('on')); $('yt').value = b.dataset.yt; loadBeat(true); };
+
 /* ---------- start ---------- */
 if (saved.voice && VOICES.some(v => v.id === saved.voice)) voice = saved.voice;
 ['aVol', 'mVol', 'rate', 'rep', 'gap'].forEach(id => { if (saved[id]) $(id).value = saved[id]; });
@@ -166,4 +180,5 @@ renderVoices();
 const savedFiles = (() => { try { return JSON.parse(localStorage.getItem(LS + '-files')) || []; } catch { return []; } })();
 if (savedFiles.length) Promise.all(savedFiles.map((n, i) => audioGet('reader-file-' + i).then(b => b && new File([b], n, { type: b.type })))).then(fs => { fs = fs.filter(Boolean); if (fs.length) openFiles(fs, false); else if (saved.text) { $('text').value = saved.text; openReader(); } });
 else if (saved.text) { $('text').value = saved.text; openReader(); } else countText();
+if (new URLSearchParams(location.search).has('go') && spoken.length) $('now').textContent = 'Ready. Press ▶ to hear your affirmations, and ♪ for a beat.';
 if (saved.yt) $('yt').value = saved.yt;

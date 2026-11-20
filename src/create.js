@@ -274,3 +274,13 @@ $('save').onclick = async () => {
   } catch (err) { $('save').disabled = false; $('save').textContent = 'Save to my MemoPad'; msg('Could not save: ' + (err.message || err)); }
   busy = false;
 };
+
+/* ---------- Play now: hear the words straight away in Reader (line by line, with a YouTube lofi beat) ---------- */
+$('playNow').onclick = () => {
+  const L = lines(); if (!L.length) return msg('Add some words first, or tap Write for me.');
+  const v = $('voice').value, LS = 'memopad-reader';
+  let old = {}; try { old = JSON.parse(localStorage.getItem(LS)) || {}; } catch {}
+  localStorage.removeItem(LS + '-files');
+  localStorage.setItem(LS, JSON.stringify({ ...old, text: L.join('\n'), voice: v, rate: String({ '0.85': 0.9, '1': 1, '1.1': 1.1 }[$('pace').value] || 1), rep: $('rep').value }));
+  location.href = '/reader.html?go=1';
+};

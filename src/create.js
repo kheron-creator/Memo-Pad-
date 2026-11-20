@@ -44,10 +44,11 @@ function updateCount() {
 /* ---------- 2. Voice ---------- */
 const ttsCache = new Map();
 async function decode(blob) { return ac().decodeAudioData(await blob.arrayBuffer()); }
-async function speak(text, voiceId, onDl) {
-  const k = voiceId + '|' + $('pace').value + '|' + text; if (ttsCache.has(k)) return ttsCache.get(k);
-  const b = await decode(await speakBlob(text, voiceId, onDl, +$('pace').value || 1)); ttsCache.set(k, b); return b;
+async function speak(text, voiceId, onDl, ctx = null) {
+  const k = voiceId + '|' + $('pace').value + '|' + (ctx ? 'f|' : '') + text; if (ttsCache.has(k)) return ttsCache.get(k);
+  const b = await decode(await speakBlob(text, voiceId, onDl, +$('pace').value || 1, ctx)); ttsCache.set(k, b); return b;
 }
+
 function seg(id, attr, on) {
   $(id).addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; [...$(id).children].forEach(x => x.classList.toggle('on', x === b)); on(b.dataset[attr]); });
 }
@@ -188,7 +189,7 @@ $('make').onclick = async () => {
       const rep = +$('rep').value, gap = +$('gap').value, v = $('voice').value;
       for (let i = 0; i < L.length; i++) {
         msg(`Speaking line ${i + 1} of ${L.length}…`);
-        const b = await speak(L[i], v, p => msg(`Downloading the voice (first time only)… ${Math.round(p * 100)}%`));
+        const b = await speak(L[i], v, p => msg(`Downloading the voice (first time only)… ${Math.round(p * 100)}%`), { prev: L[i - 1] || '', next: L[i + 1] || '' });
         for (let r = 0; r < rep; r++) { place.push([b, t]); said.push([L[i], t, t + b.duration]); t += b.duration + gap; }
         prog(0.02 + 0.6 * (i + 1) / L.length);
       }

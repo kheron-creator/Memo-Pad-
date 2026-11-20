@@ -83,16 +83,20 @@ function show(scroll = true) {
   $('pos').textContent = `${cur + 1} / ${spoken.length}`;
   $('now').textContent = items[i]?.text || '';
 }
-function prefetch() { for (let k = 1; k <= AHEAD; k++) { const i = spoken[cur + k]; if (i != null && !items[i].file) speakBlob(items[i].text, voice).catch(() => {}); } }
+// ElevenLabs voices: pace is made by ElevenLabs itself (sounds natural); free voices use the player's speed
+const isEl = () => voice.startsWith('el:');
+const elSpeed = () => isEl() ? Math.min(1.2, Math.max(0.7, +$('rate').value || 1)) : 1;
+const ctxOf = i => { const k = spoken.indexOf(i); return { prev: items[spoken[k - 1]]?.text || '', next: items[spoken[k + 1]]?.text || '' }; };
+function prefetch() { for (let k = 1; k <= AHEAD; k++) { const i = spoken[cur + k]; if (i != null && !items[i].file) speakBlob(items[i].text, voice, undefined, elSpeed(), ctxOf(i)).catch(() => {}); } }
 let token = 0, lastSrc = '';
 async function speakCurrent() {
   const my = ++token; clearTimeout(gapTimer); show();
   const line = items[spoken[cur]];
   try {
-    const blob = line.file || await speakBlob(line.text, voice, p => ($('now').textContent = `Downloading the free voice… ${Math.round(p * 100)}%`));
+    const blob = line.file || await speakBlob(line.text, voice, p => ($('now').textContent = `Downloading the free voice… ${Math.round(p * 100)}%`), elSpeed(), ctxOf(spoken[cur]));
     if (my !== token || !playing) return;
     if (lastSrc) URL.revokeObjectURL(lastSrc);
-    aud.src = lastSrc = URL.createObjectURL(blob); aud.playbackRate = +$('rate').value; await aud.play(); show(false); prefetch(); save();
+    aud.src = lastSrc = URL.createObjectURL(blob); aud.playbackRate = isEl() ? 1 : +$('rate').value; await aud.play(); show(false); prefetch(); save();
   } catch (err) { if (my === token) { stop(); $('now').textContent = 'The voice could not play: ' + (err.message || err) + '.'; } }
 }
 aud.onended = () => {
@@ -126,7 +130,7 @@ $('prev').onclick = () => { if (!spoken.length) return; cur = Math.max(0, cur - 
 $('next').onclick = () => { if (!spoken.length) return; cur = Math.min(spoken.length - 1, cur + 1); playing ? (repLeft = +$('rep').value, speakCurrent()) : show(); };
 $('more').onclick = () => ($('dset').hidden = !$('dset').hidden);
 $('aVol').oninput = () => { vol(); save(); }; $('mVol').oninput = () => { vol(); save(); };
-$('rate').onchange = () => { aud.playbackRate = +$('rate').value; save(); };
+$('rate').onchange = () => { aud.playbackRate = isEl() ? 1 : +$('rate').value; prefetch(); save(); };
 ['rep', 'gap'].forEach(id => ($(id).onchange = save));
 if ('mediaSession' in navigator) { navigator.mediaSession.setActionHandler('nexttrack', () => $('next').click()); navigator.mediaSession.setActionHandler('previoustrack', () => $('prev').click()); }
 

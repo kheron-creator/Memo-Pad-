@@ -12,8 +12,8 @@ export const cacheKey = (voiceId, text, speed = 1) => `tts:${voiceId}:${hash(tex
 export function elevenReason(e) {
   try { const d = JSON.parse(e.detail || '{}').detail || {}; return [d.status, d.message].filter(Boolean).join(': ').slice(0, 200); } catch { return String(e.detail || '').slice(0, 200); }
 }
-async function eleven(text, voice, speed = 1) {
-  const r = await fetch('/api/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, voice, speed }) });
+async function eleven(text, voice, speed = 1, ctx = {}) {
+  const r = await fetch('/api/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, voice, speed, prev: ctx.prev || '', next: ctx.next || '' }) });
   if (!r.ok) {
     const e = await r.json().catch(() => ({}));
     throw new Error({ not_configured: 'ElevenLabs is not switched on yet (the API key is missing)', text: 'that line is too long, keep each line under 500 characters' }[e.error] || `ElevenLabs said no (${e.status || r.status}${elevenReason(e) ? ', ' + elevenReason(e) : ''})`);
@@ -23,13 +23,14 @@ async function eleven(text, voice, speed = 1) {
 
 // Returns an audio Blob for one line. onDl(fraction) reports the one-time free-voice download.
 // speed (ElevenLabs voices only): 0.8 slow, 1 steady, 1.1 upbeat.
-export async function speakBlob(text, voiceId, onDl = () => {}, speed = 1) {
-  const k = cacheKey(voiceId, text, speed);
+// ctx {prev, next}: the lines either side, so ElevenLabs keeps one smooth flow across lines (like its Reader).
+export async function speakBlob(text, voiceId, onDl = () => {}, speed = 1, ctx = null) {
+  const k = cacheKey(voiceId, text, speed) + (ctx && voiceId.startsWith('el:') ? ':f' : '');
   if (mem.has(k)) return mem.get(k);
   const p = (async () => {
     const hit = await audioGet(k); if (hit) return hit;
     let blob;
-    if (voiceId.startsWith('el:')) blob = await eleven(text, voiceId.slice(3), speed);
+    if (voiceId.startsWith('el:')) blob = await eleven(text, voiceId.slice(3), speed, ctx || {});
     else { const T = await loadPiper(); blob = await T.predict({ text, voiceId }, x => { if (x && x.total) onDl(x.loaded / x.total); }); }
     audioPut(k, blob); return blob;
   })();

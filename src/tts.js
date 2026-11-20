@@ -6,10 +6,10 @@ let piper = null;
 const loadPiper = () => (piper ||= import('@diffusionstudio/vits-web'));
 const hash = s => { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36); };
 const mem = new Map();
-export const cacheKey = (voiceId, text) => `tts:${voiceId}:${hash(text)}:${text.length}`;
+export const cacheKey = (voiceId, text, speed = 1) => `tts:${voiceId}:${hash(text)}:${text.length}${speed !== 1 ? ':s' + speed : ''}`;
 
-async function eleven(text, voice) {
-  const r = await fetch('/api/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, voice }) });
+async function eleven(text, voice, speed = 1) {
+  const r = await fetch('/api/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, voice, speed }) });
   if (!r.ok) {
     const e = await r.json().catch(() => ({}));
     throw new Error({ not_configured: 'ElevenLabs is not switched on yet (the API key is missing)', text: 'that line is too long, keep each line under 500 characters' }[e.error] || `ElevenLabs said no (${e.status || r.status})`);
@@ -18,13 +18,14 @@ async function eleven(text, voice) {
 }
 
 // Returns an audio Blob for one line. onDl(fraction) reports the one-time free-voice download.
-export async function speakBlob(text, voiceId, onDl = () => {}) {
-  const k = cacheKey(voiceId, text);
+// speed (ElevenLabs voices only): 0.8 slow, 1 steady, 1.1 upbeat.
+export async function speakBlob(text, voiceId, onDl = () => {}, speed = 1) {
+  const k = cacheKey(voiceId, text, speed);
   if (mem.has(k)) return mem.get(k);
   const p = (async () => {
     const hit = await audioGet(k); if (hit) return hit;
     let blob;
-    if (voiceId.startsWith('el:')) blob = await eleven(text, voiceId.slice(3));
+    if (voiceId.startsWith('el:')) blob = await eleven(text, voiceId.slice(3), speed);
     else { const T = await loadPiper(); blob = await T.predict({ text, voiceId }, x => { if (x && x.total) onDl(x.loaded / x.total); }); }
     audioPut(k, blob); return blob;
   })();

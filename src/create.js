@@ -2,12 +2,12 @@
 // Everything runs on this device. The AI voice is Piper (open source, MIT voices) running in the browser,
 // downloaded once from Hugging Face and kept in the browser's private storage. Music is generated here too.
 import './create.css';
-import { audioPut } from './cloud.js';
+import { audioPut, supabase, BUCKET, TABLE, trackToRow } from './cloud.js';
 import { VOICES, orb } from './voices.js';
 import { speakBlob } from './tts.js';
 const $ = id => document.getElementById(id);
 const SR = 44100;
-let vMode = 'ai', mMode = 'calm', recBlob = null, voiceFileBlob = null, musicFileBuf = null, busy = false, outUrl = null;
+let vMode = 'ai', mMode = 'calm', recBlob = null, voiceFileBlob = null, musicFileBuf = null, aiBuf = null, busy = false, outUrl = null, last = null;
 let actx = null; const ac = () => (actx ||= new (window.AudioContext || window.webkitAudioContext)());
 
 /* ---------- 1. Words ---------- */
@@ -25,6 +25,12 @@ function writeForMe() {
   const g = $('goal').value.trim().replace(/[.!?]+$/, '').replace(/^(to|i want to|i want|i'd like to)\s+/i, '');
   const goalLines = g ? shuffle(GOAL).slice(0, 3).map(t => t.replace('{g}', g.charAt(0).toLowerCase() + g.slice(1))) : [];
   const lines = [...goalLines.slice(0, 1), ...shuffle(BANK[$('pillar').value]).slice(0, g ? 4 : 7), ...goalLines.slice(1)];
+  const who = $('who').value.trim().replace(/[^\p{L}\p{M}' -]/gu, '').slice(0, 40);
+  if (who) { // the name opens the track and comes back about one line in ten
+    lines.unshift(`${who}, you are ready for today.`);
+    for (let i = 10; i < lines.length; i += 10) lines.splice(i, 0, `${who}, you are doing so well.`);
+    lines.push(`${who}, did you get the message?`);
+  }
   $('text').value = lines.join('\n'); updateCount();
 }
 const lines = () => $('text').value.split('\n').map(s => s.trim()).filter(Boolean);
@@ -39,14 +45,14 @@ function updateCount() {
 const ttsCache = new Map();
 async function decode(blob) { return ac().decodeAudioData(await blob.arrayBuffer()); }
 async function speak(text, voiceId, onDl) {
-  const k = voiceId + '|' + text; if (ttsCache.has(k)) return ttsCache.get(k);
-  const b = await decode(await speakBlob(text, voiceId, onDl)); ttsCache.set(k, b); return b;
+  const k = voiceId + '|' + $('pace').value + '|' + text; if (ttsCache.has(k)) return ttsCache.get(k);
+  const b = await decode(await speakBlob(text, voiceId, onDl, +$('pace').value || 1)); ttsCache.set(k, b); return b;
 }
 function seg(id, attr, on) {
   $(id).addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; [...$(id).children].forEach(x => x.classList.toggle('on', x === b)); on(b.dataset[attr]); });
 }
 seg('vMode', 'v', v => { vMode = v; $('vPill').hidden = v !== 'ai'; document.querySelectorAll('.vp').forEach(p => (p.hidden = p.dataset.p !== v)); $('aiOpts').hidden = v !== 'ai'; });
-seg('mMode', 'm', m => { mMode = m; $('mFileRow').hidden = m !== 'file'; });
+seg('mMode', 'm', m => { mMode = m; $('mFileRow').hidden = m !== 'file'; $('aiRow').hidden = m !== 'ai'; });
 
 let rec = null, recT0 = 0, recTimer = 0;
 $('recBtn').onclick = async () => {
@@ -116,8 +122,9 @@ function reverb(ctx) {
 // Schedules dur seconds of music into dest on ctx (an OfflineAudioContext).
 function music(ctx, dest, mood, dur) {
   if (mood === 'none') return;
-  if (mood === 'file') {
-    if (!musicFileBuf) return; const s = ctx.createBufferSource(); s.buffer = musicFileBuf; s.loop = true;
+  if (mood === 'file' || mood === 'ai') {
+    const src = mood === 'ai' ? aiBuf : musicFileBuf;
+    if (!src) return; const s = ctx.createBufferSource(); s.buffer = src; s.loop = true;
     const g = ctx.createGain(); g.gain.value = 0.7; s.connect(g).connect(dest); s.start(0); s.stop(dur); return;
   }
   const M = MOODS[mood], r = rng(42), bus = ctx.createGain(), lp = ctx.createBiquadFilter(), wet = ctx.createGain(), rv = reverb(ctx);
@@ -149,7 +156,7 @@ function musicBus(ctx, dur) {
 let prevSrc = null;
 $('mPrev').onclick = async () => {
   if (prevSrc) { prevSrc.stop(); prevSrc = null; $('mPrev').textContent = '▶ Preview'; return; }
-  if (mMode === 'none') return; if (mMode === 'file' && !musicFileBuf) return msg('Choose your instrumental first.');
+  if (mMode === 'none') return; if (mMode === 'file' && !musicFileBuf) return msg('Choose your instrumental first.'); if (mMode === 'ai' && !aiBuf) return msg('Make your AI beat first.');
   const ctx = new OfflineAudioContext(2, 20 * SR, SR); music(ctx, musicBus(ctx, 20), mMode, 20);
   const buf = await ctx.startRendering(); await ac().resume();
   prevSrc = ac().createBufferSource(); prevSrc.buffer = buf; prevSrc.connect(ac().destination); prevSrc.start();
@@ -173,15 +180,16 @@ $('make').onclick = async () => {
   if (vMode === 'rec' && !recBlob) return msg('Record your voice in step 2 first.');
   if (vMode === 'file' && !voiceFileBlob) return msg('Choose a recording in step 2 first.');
   if (mMode === 'file' && !musicFileBuf) return msg('Choose your instrumental in step 3 first.');
+  if (mMode === 'ai' && !aiBuf) return msg('Make your AI beat in step 3 first, or pick another beat.');
   busy = true; $('make').disabled = true; $('out').hidden = true; prog(0.02);
   try {
-    const lead = 4, tail = 6, place = []; let t = lead;
+    const lead = 4, tail = 6, place = [], said = []; let t = lead;
     if (vMode === 'ai') {
       const rep = +$('rep').value, gap = +$('gap').value, v = $('voice').value;
       for (let i = 0; i < L.length; i++) {
         msg(`Speaking line ${i + 1} of ${L.length}…`);
         const b = await speak(L[i], v, p => msg(`Downloading the voice (first time only)… ${Math.round(p * 100)}%`));
-        for (let r = 0; r < rep; r++) { place.push([b, t]); t += b.duration + gap; }
+        for (let r = 0; r < rep; r++) { place.push([b, t]); said.push([L[i], t, t + b.duration]); t += b.duration + gap; }
         prog(0.02 + 0.6 * (i + 1) / L.length);
       }
       t -= gap;
@@ -199,7 +207,9 @@ $('make').onclick = async () => {
     const name = ($('title').value.trim() || 'My affirmations').replace(/[\\/:*?"<>|]+/g, '');
     $('player').src = outUrl; $('dl').href = outUrl; $('dl').download = name + '.mp3';
     audioPut('_create_last', mp3);
-    $('out').hidden = false; prog(1); msg(`Done: ${fmt(dur)}, ${(mp3.size / 1048576).toFixed(1)} MB. Download it, then add it in MemoPad to share it.`);
+    last = { mp3, dur, name, said, peaks: peaksOf(mix, dur), saved: false };
+    $('save').disabled = false; $('save').textContent = 'Save to my MemoPad';
+    $('out').hidden = false; prog(1); msg(`Done: ${fmt(dur)}, ${(mp3.size / 1048576).toFixed(1)} MB. Save it to your MemoPad below, or download it.`);
   } catch (err) { msg('Something went wrong: ' + (err.message || err)); }
   busy = false; $('make').disabled = false; setTimeout(() => ($('bar').hidden = true), 1200);
 };
@@ -208,3 +218,59 @@ $('write').onclick = writeForMe;
 $('text').oninput = updateCount; $('rep').onchange = updateCount; $('gap').onchange = updateCount;
 $('goal').onkeydown = e => { if (e.key === 'Enter') writeForMe(); };
 
+
+/* ---------- AI beat (ElevenLabs Music through /api/music) ---------- */
+$('aiPresets').onclick = e => { const b = e.target.closest('button'); if (!b) return; [...$('aiPresets').children].forEach(x => x.classList.toggle('on', x === b)); $('aiPrompt').value = b.dataset.p; };
+async function token() { const { data } = supabase ? await supabase.auth.getSession() : { data: null }; return data?.session?.access_token || null; }
+$('aiMake').onclick = async () => {
+  if (busy) return; const prompt = $('aiPrompt').value.trim();
+  if (!prompt) return ($('aiInfo').textContent = 'Pick a style above or describe your beat first.');
+  const tk = await token(); if (!tk) return ($('aiInfo').innerHTML = 'Sign in first: <a href="/">open MemoPad</a>, sign in, then come back here.');
+  busy = true; $('aiMake').disabled = true; $('aiInfo').textContent = 'Making your beat… this takes about a minute.';
+  try {
+    const r = await fetch('/api/music', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tk}` }, body: JSON.stringify({ prompt }) });
+    if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error({ sign_in: 'please sign in to MemoPad again', not_configured: 'ElevenLabs is not switched on yet' }[e.error] || `ElevenLabs said no (${e.status || r.status})`); }
+    aiBuf = await decode(await r.blob());
+    $('aiInfo').textContent = `Your beat is ready (${fmt(aiBuf.duration)}, it loops to fit). Tap Preview to hear it.`;
+  } catch (err) { $('aiInfo').textContent = 'Could not make the beat: ' + (err.message || err); }
+  busy = false; $('aiMake').disabled = false;
+};
+
+/* ---------- Save to my MemoPad (private unless Public is ticked) ---------- */
+const BPS = 20; // same as the main player
+function peaksOf(ab, dur) {
+  const ch = ab.getChannelData(0), n = Math.max(1, Math.ceil(dur * BPS)), step = Math.max(1, Math.floor(ch.length / n)), out = new Float32Array(n);
+  for (let i = 0; i < n; i++) { let s = 0, c = 0; for (let j = i * step; j < (i + 1) * step && j < ch.length; j += 4) { s += ch[j] * ch[j]; c++; } out[i] = Math.sqrt(s / (c || 1)); }
+  let mx = 0; for (const v of out) mx = Math.max(mx, v); for (let i = 0; i < n; i++) out[i] = Math.pow(out[i] / (mx || 1), 0.7);
+  return out;
+}
+// read-along words: each line's words spread evenly over the time that line is spoken
+function wordsOf(said) {
+  const w = [];
+  said.forEach(([line, a, b]) => { const parts = line.split(/\s+/).filter(Boolean), d = (b - a) / (parts.length || 1); parts.forEach((p, i) => w.push({ text: p, start: a + i * d, end: a + (i + 1) * d, ...(i === parts.length - 1 ? { p: 1 } : {}) })); });
+  return w;
+}
+function chaptersOf(said) { // one chapter about every 10 lines, named by its first line
+  const c = [{ t: 0, title: 'Start' }];
+  for (let i = 10; i < said.length; i += 10) c.push({ t: Math.max(0, said[i][1] - 0.5), title: said[i][0].slice(0, 60) });
+  return c;
+}
+$('save').onclick = async () => {
+  if (!last || last.saved || busy) return;
+  if (!supabase) return msg('Saving is not set up on this copy of MemoPad.');
+  const { data: { user } = {} } = await supabase.auth.getUser().catch(() => ({ data: {} }));
+  if (!user) return msg('Sign in to MemoPad first: open MemoPad in another tab, sign in, then tap Save again.');
+  busy = true; $('save').disabled = true; $('save').textContent = 'Saving…';
+  try {
+    const id = crypto.randomUUID(), audio_path = `${user.id}/${id}.mp3`;
+    const t = { title: last.name, category: 'Affirmations', description: last.said.map(x => x[0]).filter((x, i, a) => a.indexOf(x) === i).join('\n'), duration: last.dur, peaks: last.peaks,
+      words: wordsOf(last.said), chapters: last.said.length ? chaptersOf(last.said) : [{ t: 0, title: 'Start' }], is_shared: false, is_public: $('pub').checked };
+    const up = await supabase.storage.from(BUCKET).upload(audio_path, last.mp3, { contentType: 'audio/mpeg', upsert: false });
+    if (up.error) throw new Error('upload failed: ' + up.error.message);
+    const ins = await supabase.from(TABLE).insert({ id, user_id: user.id, audio_path, ...trackToRow(t, true) }).select('id').single();
+    if (ins.error) { await supabase.storage.from(BUCKET).remove([audio_path]); throw new Error('could not save: ' + ins.error.message); }
+    last.saved = true; $('save').textContent = 'Saved ✓';
+    msg(t.is_public ? 'Saved to your MemoPad as a public track. Open MemoPad to copy its link.' : 'Saved to your MemoPad. Only you can see it. You can make it public later from Share.');
+  } catch (err) { $('save').disabled = false; $('save').textContent = 'Save to my MemoPad'; msg('Could not save: ' + (err.message || err)); }
+  busy = false;
+};

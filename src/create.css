@@ -146,3 +146,8 @@ body.rd .cp{padding-bottom:calc(150px + env(safe-area-inset-bottom))}
 .signin input[type=password]{background:var(--bg);color:#fff;border:1px solid var(--line);border-radius:14px;padding:11px 14px;font:inherit;font-weight:600;flex:1;min-width:140px}
 .bb{border:0;border-radius:999px;height:42px;padding:0 14px;background:#2a2a30;color:#fff;font:600 14px Poppins,sans-serif;white-space:nowrap}
 body.beat .bb{background:var(--grad)}
+.m-ai{background:linear-gradient(135deg,#E10195,#FFB000)}
+#aiRow{margin-bottom:12px}
+#aiPresets button.on{border-color:#fff}
+.pub{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600}
+.pub input{width:18px;height:18px;accent-color:#25DD5F}

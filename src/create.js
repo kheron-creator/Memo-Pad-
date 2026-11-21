@@ -17,23 +17,79 @@ const BANK = {
   Professionally: ['I do excellent work and I am rewarded for it.', 'I take one focused step at a time.', 'I add real value to everyone I work with.', 'Opportunities find me and I am ready for them.', 'I finish what I start.', 'I am organised, prepared and in control of my day.', 'I deserve to be paid well for my skills.'],
   Physically: ['My body is strong and full of energy.', 'I move my body every day with joy.', 'I fuel myself with good food and water.', 'I rest well and wake up refreshed.', 'Every day I get a little fitter.', 'I listen to what my body needs.', 'I am healthy, vibrant and alive.'],
   Socially: ['I attract good people into my life.', 'I speak with warmth and confidence.', 'I am a great friend and I am well loved.', 'People feel at ease around me.', 'I show up fully in every conversation.', 'I give and receive support easily.', 'I belong wherever I choose to be.'],
+  Spiritually: ['I am guided, protected and provided for.', 'I walk in faith, not fear.', 'I am grateful for every blessing today.', 'My purpose is bigger than my doubts.', 'I trust the timing of my life.', 'I am at peace with who I am becoming.', 'I carry light into every room.'],
+  Financially: ['I manage my money with care and confidence.', 'I am open to new streams of income.', 'I spend with purpose and save with ease.', 'My value grows every day.', 'I make wise choices with what I have.', 'Money flows to me through good work.', 'I am building wealth step by step.'],
   Romantically: ['I give and receive love freely.', 'I am worthy of deep, lasting love.', 'I communicate openly and listen with my heart.', 'My relationship grows stronger every day.', 'I am patient, loving and kind.', 'I celebrate the people I love.', 'Love flows easily in my life.'],
 };
 const GOAL = ['I am ready to {g}.', 'Every day I {g}.', 'It is safe and natural for me to {g}.', 'I have everything I need to {g}.', 'I am becoming someone who can {g}.'];
 const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
-function writeForMe() {
-  const g = $('goal').value.trim().replace(/[.!?]+$/, '').replace(/^(to|i want to|i want|i'd like to)\s+/i, '');
-  const goalLines = g ? shuffle(GOAL).slice(0, 3).map(t => t.replace('{g}', g.charAt(0).toLowerCase() + g.slice(1))) : [];
-  const lines = [...goalLines.slice(0, 1), ...shuffle(BANK[$('pillar').value]).slice(0, g ? 4 : 7), ...goalLines.slice(1)];
-  const who = $('who').value.trim().replace(/[^\p{L}\p{M}' -]/gu, '').slice(0, 40);
-  if (who) { // the name opens the track and comes back about one line in ten
-    lines.unshift(`${who}, you are ready for today.`);
-    for (let i = 10; i < lines.length; i += 10) lines.splice(i, 0, `${who}, you are doing so well.`);
-    lines.push(`${who}, did you get the message?`);
-  }
-  $('text').value = lines.join('\n'); updateCount();
+// chip rows: one choice, or many for life areas
+const pick = id => $(id).querySelector('button.on')?.dataset || {};
+['person', 'tone', 'howMany'].forEach(id => $(id).addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; [...$(id).children].forEach(x => x.classList.toggle('on', x === b)); }));
+$('areas').addEventListener('click', e => { const b = e.target.closest('button'); if (b) b.classList.toggle('on'); });
+const areas = () => [...$('areas').querySelectorAll('button.on')].map(b => b.dataset.a);
+const AREA_TITLE = { Mentally: 'A clear, focused mind', Emotionally: 'Calm and steady emotions', Professionally: 'Excellent work and growth', Physically: 'A strong, healthy body', Socially: 'Great friends and connection', Romantically: 'Deep, lasting love', Spiritually: 'Faith and purpose', Financially: 'Money and abundance' };
+// 500 lines = 10 chapters of 50: who I am becoming, the chosen areas, then general themes, ending on the message
+function chapters(goal) {
+  const t = ['Who I am becoming', ...(goal ? [`Ready to ${goal}`] : []), ...areas().map(a => AREA_TITLE[a]), 'Confidence and courage', 'Discipline and focus', 'Gratitude', 'Rest and peace', 'Energy and joy', 'Love and kindness'];
+  const out = [...new Set(t)].slice(0, 9); while (out.length < 9) out.push('Progress every day');
+  return [...out, 'Did you get the message?'];
 }
-const lines = () => $('text').value.split('\n').map(s => s.trim()).filter(Boolean);
+const cleanName = () => $('who').value.trim().replace(/[^\p{L}\p{M}' -]/gu, '').slice(0, 40);
+const cleanGoal = () => $('goal').value.trim().replace(/[.!?]+$/, '').replace(/^(to|i want to|i want|i'd like to)\s+/i, '');
+function addName(L, who, where) { // the name opens the track; "often" brings it back about one line in ten
+  if (!who || where === 'none') return L;
+  L = L.slice(); L.unshift(`${who}, you are ready for today.`);
+  if (where === 'often') for (let i = 10; i < L.length; i += 11) L.splice(i, 0, `${who}, you are doing so well.`);
+  L.push(`${who}, did you get the message?`); return L;
+}
+function bankLines(n, g) { // built-in lines, used when the AI writer is not available
+  const goalLines = g ? shuffle(GOAL).map(t => t.replace('{g}', g.charAt(0).toLowerCase() + g.slice(1))) : [];
+  const pool = shuffle([...new Set([...goalLines, ...(areas().length ? areas() : ['Professionally']).flatMap(a => BANK[a] || [])])]);
+  return pool.slice(0, n);
+}
+let writing = false;
+async function writeForMe() {
+  if (writing) return; writing = true; $('write').disabled = true;
+  const info = t => ($('writeInfo').textContent = t);
+  const n = +pick('howMany').n || 25, g = cleanGoal(), keep = $('writeMode').value === 'add' ? $('text').value.split('\n').map(x => x.trim()).filter(Boolean) : [];
+  const base = { goal: g, why: $('why').value.trim(), areas: areas(), person: pick('person').p || 'i', tone: pick('tone').t || 'calm and steady', include: $('include').value.trim() };
+  const tok = await token();
+  const ask = async (count, chapter, avoid) => {
+    const r = await fetch('/api/write', { method: 'POST', headers: { 'Content-Type': 'application/json', ...(tok ? { Authorization: `Bearer ${tok}` } : {}) }, body: JSON.stringify({ ...base, count, chapter, avoid }) });
+    if (!r.ok) { const e = new Error(r.status); e.status = r.status; throw e; }
+    return (await r.json()).lines || [];
+  };
+  let out = [];
+  try {
+    if (n <= 50) { info('Writing your affirmations…'); out = await ask(n, '', keep.slice(-40)); }
+    else {
+      const ch = n === 500 ? chapters(g) : ['Who I am becoming', 'Did you get the message?'];
+      const per = Math.round(n / ch.length), parts = new Array(ch.length);
+      let done = 0; info(`Writing chapter 1 of ${ch.length}…`);
+      for (let i = 0; i < ch.length; i += 3) { // three chapters at a time
+        await Promise.all(ch.slice(i, i + 3).map((c, k) => ask(per, c, keep.slice(-20)).then(L => { parts[i + k] = L; info(`Written ${++done} of ${ch.length} chapters…`); })));
+      }
+      out = parts.flatMap((L, i) => n === 500 ? [`# ${ch[i]}`, ...L] : L);
+    }
+    info('Done. Edit any line you like, then press Play now or Make my track.');
+  } catch (e) {
+    out = bankLines(Math.min(n, 60), g);
+    info(e.status === 401 ? 'Sign in on the MemoPad home page so MemoPad can write lines just for you. For now, here are some ready-made ones.'
+      : e.status === 503 || e.status === 404 ? 'The personal writer is not switched on yet, so here are ready-made lines for your areas.'
+      : 'The writer was busy, so here are ready-made lines for now. Try again in a minute.');
+  }
+  const body = out.filter(x => !x.startsWith('# '));
+  const named = n === 500 ? out : addName(body, cleanName(), $('nameWhere').value);
+  if (n === 500 && cleanName() && $('nameWhere').value !== 'none') { // name opens each chapter
+    const who = cleanName(); for (let i = 0; i < named.length; i++) if (named[i].startsWith('# ') && named[i + 1]) named.splice(i + 1, 0, `${who}, this one is for you.`);
+    named.push(`${who}, did you get the message?`);
+  }
+  $('text').value = [...keep, ...named].join('\n'); updateCount();
+  writing = false; $('write').disabled = false;
+}
+// chapter headings (# Title) are spoken as plain lines here; the Reader shows them as headings
+const lines = () => $('text').value.split('\n').map(s => s.replace(/^#+\s*/, '').trim()).filter(Boolean);
 const fmt = s => { s = Math.round(s); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 function updateCount() {
   const L = lines(); if (!L.length) { $('count').textContent = ''; return; }

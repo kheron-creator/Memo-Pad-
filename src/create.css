@@ -157,3 +157,13 @@ body.beat .bb{background:var(--grad)}
 #aiPresets button.on{border-color:#fff}
 .pub{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600}
 .pub input{width:18px;height:18px;accent-color:#25DD5F}
+/* Write for me */
+.wfm{border:1px solid #2a2a30;border-radius:20px;padding:6px 16px 10px;margin:12px 0}
+.wfm summary{cursor:pointer;font-family:var(--head);font-size:17px;font-weight:700;padding:10px 0;list-style:none}
+.wfm summary::-webkit-details-marker{display:none}
+.wfm summary small{font-family:inherit;font-weight:500;font-size:13px;opacity:.65;margin-left:6px}
+.wfm .fl{display:flex;flex-direction:column;gap:6px;font-weight:600;font-size:15px;margin:10px 0}
+.wfm .fl i,.wfm .fq i{font-style:normal;font-weight:500;opacity:.6;font-size:13px}
+.wfm .fq{font-weight:600;font-size:15px;margin:12px 0 8px}
+.wfm .chips{flex-wrap:wrap;margin-bottom:6px}
+.wfm .chips button small{font-size:12px;opacity:.7}

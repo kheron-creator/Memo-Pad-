@@ -52,15 +52,29 @@
       <textarea id="text" rows="8" spellcheck="true" placeholder="One affirmation per line. Write your own, or let MemoPad write some for you below."></textarea>
       <p class="hint" id="count"></p>
     </div>
-    <div class="row">
-      <select id="pillar" aria-label="Life area">
-        <option>Mentally</option><option>Emotionally</option><option selected>Professionally</option>
-        <option>Physically</option><option>Socially</option><option>Romantically</option>
-      </select>
-      <input id="who" type="text" placeholder="Your first name (optional)" autocomplete="given-name" maxlength="40">
-      <input id="goal" type="text" placeholder="What do you want? e.g. speak up with confidence" autocomplete="off">
-      <button id="write" class="ghost grad-text">✦ Write for me</button>
-    </div>
+    <details class="wfm" id="wfm" open>
+      <summary>✦ Write for me <small>you choose, MemoPad writes</small></summary>
+      <label class="fl">What do you want?<input id="goal" type="text" placeholder="e.g. speak up with confidence at work" autocomplete="off" maxlength="300"></label>
+      <label class="fl">Why does it matter to you? <i>optional</i><input id="why" type="text" placeholder="e.g. so I can grow my business and provide for my family" autocomplete="off" maxlength="300"></label>
+      <p class="fq">Life areas <i>pick any</i></p>
+      <div class="chips small multi" id="areas"><button data-a="Mentally">Mind</button><button data-a="Emotionally">Emotions</button><button data-a="Professionally" class="on">Work</button><button data-a="Physically">Body</button><button data-a="Socially">Friends</button><button data-a="Romantically">Love</button><button data-a="Spiritually">Faith</button><button data-a="Financially">Money</button></div>
+      <p class="fq">Say it as</p>
+      <div class="chips small" id="person"><button data-p="i" class="on">I am…</button><button data-p="you">You are…</button><button data-p="mix">A mix</button></div>
+      <p class="fq">How should it feel?</p>
+      <div class="chips small" id="tone"><button data-t="calm and steady" class="on">Calm</button><button data-t="bold and powerful">Bold</button><button data-t="soft and gentle">Gentle</button><button data-t="faith-filled and grateful">Faith-filled</button><button data-t="playful and joyful">Playful</button></div>
+      <p class="fq">How many lines?</p>
+      <div class="chips small" id="howMany"><button data-n="10">10</button><button data-n="25" class="on">25</button><button data-n="50">50</button><button data-n="100">100</button><button data-n="500">500 <small>10 chapters</small></button></div>
+      <div class="row">
+        <input id="who" type="text" placeholder="Your first name (optional)" autocomplete="given-name" maxlength="40">
+        <select id="nameWhere" aria-label="Where your name goes"><option value="ends">Name at the start and end</option><option value="often" selected>Name about every 10 lines</option><option value="none">Leave my name out</option></select>
+      </div>
+      <label class="fl">Words or ideas to include <i>optional</i><input id="include" type="text" placeholder="e.g. discipline, my children, Progress Today" autocomplete="off" maxlength="200"></label>
+      <div class="row">
+        <button id="write" class="go small">✦ Write for me</button>
+        <select id="writeMode" aria-label="Replace or add"><option value="replace">Replace my words</option><option value="add">Add to my words</option></select>
+      </div>
+      <p class="hint" id="writeInfo">You can edit, delete or reorder any line in the box above afterwards.</p>
+    </details>
     <div class="row opts" id="aiOpts">
       <button id="playNow" class="go small" type="button">▶ Play now</button>
       <label>Say each line <select id="rep"><option value="1">once</option><option value="2">twice</option><option value="3">3 times</option></select></label>

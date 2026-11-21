@@ -44,7 +44,12 @@
 
   <section class="step">
     <h2><b>3</b> Beat</h2>
+    <p class="hint">MemoPad beats loop and keep playing when you leave the app.</p>
+    <div class="moods" id="mpBeats"></div>
+    <p class="hint">YouTube beats (these stop when you leave the app)</p>
     <div class="moods" id="presets"></div>
+    <div class="row"><input id="ytQ" type="search" placeholder="Search YouTube, e.g. lofi rain" autocomplete="off"><button id="ytFind" class="ghost">Search</button></div>
+    <div class="ytres" id="ytRes"></div>
     <div class="row"><input id="yt" type="text" placeholder="Or paste any YouTube link (song or playlist)" autocomplete="off"><button id="ytLoad" class="ghost">Load</button></div>
     <div class="row"><button class="go small beatBtn" type="button">♪&nbsp;<span>Play beat</span></button><span class="hint">The beat and the voice each have their own play button.</span></div>
     <div class="ytbox" id="ytBox" hidden><div id="ytPlayer"></div></div>
@@ -68,12 +73,13 @@
     <div class="row">
       <label>Speed <select id="rate"><option>0.8</option><option>0.9</option><option selected>1</option><option>1.1</option><option>1.25</option></select></label>
       <label>Say each <select id="rep"><option value="1">once</option><option value="2">twice</option><option value="3">3×</option></select></label>
-      <label>Pause <select id="gap"><option value="0.8">short</option><option value="2" selected>medium</option><option value="4">long</option></select></label>
+      <label>Pause <select id="gap"><option value="0.3" selected>flowing</option><option value="0.8">short</option><option value="2">medium</option><option value="4">long</option></select></label>
       <label><input type="checkbox" id="loopAll"> Loop</label>
     </div>
   </div>
 </div>
 <audio id="aud" playsinline></audio>
+<audio id="bAud" playsinline loop crossorigin="anonymous" preload="none"></audio>
 <script type="module" src="/src/reader.js"></script>
 </body>
 </html>

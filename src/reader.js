@@ -5,17 +5,18 @@ import './create.css';
 import { VOICES, orb } from './voices.js';
 import { speakBlob } from './tts.js';
 import { parseYt, loadYtApi, beatTiles } from './yt.js';
+import { mpTiles } from './beats.js';
 import { docxText } from './docx.js';
 import { audioGet, audioPut } from './cloud.js';
 const $ = id => document.getElementById(id);
 const MAX = 1000, AHEAD = 3, LS = 'memopad-reader';
-const aud = $('aud');
+const aud = $('aud'), bAud = $('bAud');
 let voice = VOICES[0].id, items = [], spoken = [], cur = 0, playing = false, repLeft = 0, gapTimer = 0, docKey = '';
-let yt = null, ytReady = false, beatOn = false, curV = null;
+let yt = null, ytReady = false, beatOn = false, curV = null, beatSrc = '';
 
 /* ---------- saved state ---------- */
 const saved = (() => { try { return JSON.parse(localStorage.getItem(LS)) || {}; } catch { return {}; } })();
-const save = () => { saved.pos = { ...(saved.pos || {}), [docKey]: cur }; localStorage.setItem(LS, JSON.stringify({ text: $('text').value, voice, pos: saved.pos, yt: $('yt').value, aVol: $('aVol').value, mVol: $('mVol').value, rate: $('rate').value, rep: $('rep').value, gap: $('gap').value })); };
+const save = () => { saved.pos = { ...(saved.pos || {}), [docKey]: cur }; localStorage.setItem(LS, JSON.stringify({ text: $('text').value, voice, pos: saved.pos, yt: $('yt').value, aVol: $('aVol').value, mVol: $('mVol').value, rate: $('rate').value, rep: $('rep').value, gap: $('gap').value, beat: beatSrc })); };
 
 /* ---------- voice row ---------- */
 function renderVoices() {
@@ -73,26 +74,46 @@ function openFiles(files, keep = true) {
 $('lines').onclick = e => { const p = e.target.closest('p[data-i]'); if (!p) return; cur = spoken.indexOf(+p.dataset.i); play(true); };
 
 /* ---------- playback ---------- */
-// The voice plays straight through the audio player (not Web Audio), so the iPhone silent switch can't mute it
-// and it mixes with the YouTube beat. Phones may ignore the voice volume; the beat volume always works.
+// Phones ignore an audio player's own volume, so the voice and the MemoPad beat each go through a Web Audio
+// volume knob (gain). 'playback' tells iPhones to ignore the silent switch and keep playing in the background.
 if (navigator.audioSession) try { navigator.audioSession.type = 'playback'; } catch {}
-function vol() { aud.volume = Math.min(1, +$('aVol').value / 100); if (yt && ytReady) yt.setVolume(+$('mVol').value); }
+let ac = null, vG = null, bG = null;
+function mixer() {
+  if (!ac) try {
+    ac = new (window.AudioContext || window.webkitAudioContext)();
+    vG = ac.createGain(); bG = ac.createGain();
+    ac.createMediaElementSource(aud).connect(vG).connect(ac.destination);
+    ac.createMediaElementSource(bAud).connect(bG).connect(ac.destination);
+  } catch { ac = vG = bG = null; }
+  if (ac && ac.state !== 'running') ac.resume().catch(() => {});
+  vol();
+}
+document.addEventListener('visibilitychange', () => { if (ac && ac.state !== 'running' && (playing || beatOn)) ac.resume().catch(() => {}); });
+function vol() {
+  const v = +$('aVol').value / 100, m = +$('mVol').value / 100;
+  if (vG) { vG.gain.value = v; bG.gain.value = m; aud.volume = 1; bAud.volume = 1; } else { aud.volume = Math.min(1, v); bAud.volume = Math.min(1, m); }
+  if (yt && ytReady) yt.setVolume(+$('mVol').value);
+}
 function show(scroll = true) {
   const i = spoken[cur]; document.querySelectorAll('#lines p.now').forEach(p => p.classList.remove('now'));
   const p = document.querySelector(`#lines p[data-i="${i}"]`); if (p) { p.classList.add('now'); if (scroll) { const box = $('lines'); box.scrollTo({ top: p.offsetTop - box.clientHeight / 2 + p.clientHeight / 2, behavior: 'smooth' }); } }
   $('pos').textContent = `${cur + 1} / ${spoken.length}`;
   $('now').textContent = items[i]?.text || '';
 }
-function prefetch() { for (let k = 1; k <= AHEAD; k++) { const i = spoken[cur + k]; if (i != null && !items[i].file) speakBlob(items[i].text, voice).catch(() => {}); } }
+// ElevenLabs voices: pace is made by ElevenLabs itself (sounds natural); free voices use the player's speed
+const isEl = () => voice.startsWith('el:');
+const elSpeed = () => isEl() ? Math.min(1.2, Math.max(0.7, +$('rate').value || 1)) : 1;
+const ctxOf = i => { const k = spoken.indexOf(i); return { prev: items[spoken[k - 1]]?.text || '', next: items[spoken[k + 1]]?.text || '' }; };
+function prefetch() { for (let k = 1; k <= AHEAD; k++) { const i = spoken[cur + k]; if (i != null && !items[i].file) speakBlob(items[i].text, voice, undefined, elSpeed(), ctxOf(i)).catch(() => {}); } }
 let token = 0, lastSrc = '';
 async function speakCurrent() {
   const my = ++token; clearTimeout(gapTimer); show();
   const line = items[spoken[cur]];
   try {
-    const blob = line.file || await speakBlob(line.text, voice, p => ($('now').textContent = `Downloading the free voice… ${Math.round(p * 100)}%`));
+    const blob = line.file || await speakBlob(line.text, voice, p => ($('now').textContent = `Downloading the free voice… ${Math.round(p * 100)}%`), elSpeed(), ctxOf(spoken[cur]));
     if (my !== token || !playing) return;
     if (lastSrc) URL.revokeObjectURL(lastSrc);
-    aud.src = lastSrc = URL.createObjectURL(blob); aud.playbackRate = +$('rate').value; await aud.play(); show(false); prefetch(); save();
+    aud.src = lastSrc = URL.createObjectURL(blob); aud.playbackRate = isEl() ? 1 : +$('rate').value; await aud.play(); show(false); prefetch(); save();
   } catch (err) { if (my === token) { stop(); $('now').textContent = 'The voice could not play: ' + (err.message || err) + '.'; } }
 }
 aud.onended = () => {
@@ -112,7 +133,7 @@ const SILENT = (() => { const n = 800, b = new ArrayBuffer(44 + n * 2), d = new 
   return URL.createObjectURL(new Blob([b], { type: 'audio/wav' })); })();
 let unlocked = false;
 function unlock() {
-  vol();
+  mixer();
   if (!unlocked) { unlocked = true; aud.src = SILENT; aud.play().catch(() => {}); }
 }
 function play(fromHere) {
@@ -126,23 +147,42 @@ $('prev').onclick = () => { if (!spoken.length) return; cur = Math.max(0, cur - 
 $('next').onclick = () => { if (!spoken.length) return; cur = Math.min(spoken.length - 1, cur + 1); playing ? (repLeft = +$('rep').value, speakCurrent()) : show(); };
 $('more').onclick = () => ($('dset').hidden = !$('dset').hidden);
 $('aVol').oninput = () => { vol(); save(); }; $('mVol').oninput = () => { vol(); save(); };
-$('rate').onchange = () => { aud.playbackRate = +$('rate').value; save(); };
+$('rate').onchange = () => { aud.playbackRate = isEl() ? 1 : +$('rate').value; prefetch(); save(); };
 ['rep', 'gap'].forEach(id => ($(id).onchange = save));
-if ('mediaSession' in navigator) { navigator.mediaSession.setActionHandler('nexttrack', () => $('next').click()); navigator.mediaSession.setActionHandler('previoustrack', () => $('prev').click()); }
+if ('mediaSession' in navigator) {
+  const ms = navigator.mediaSession; try { ms.metadata = new MediaMetadata({ title: 'My affirmations', artist: 'MemoPad', artwork: [{ src: '/icon-512.png', sizes: '512x512', type: 'image/png' }] }); } catch {}
+  const h = (a, f) => { try { ms.setActionHandler(a, f); } catch {} };
+  h('nexttrack', () => $('next').click()); h('previoustrack', () => $('prev').click());
+  h('play', () => { if (!playing) play(false); if (beatSrc && !beatOn) beatToggle(); }); h('pause', () => { if (playing) stop(); if (beatOn) beatToggle(); });
+}
 
-/* ---------- beat (YouTube) ---------- */
+/* ---------- beat: MemoPad's own beats (plain audio, loops, background) or YouTube ---------- */
+$('mpBeats').innerHTML = mpTiles();
 $('presets').innerHTML = beatTiles();
-$('presets').onclick = e => { const b = e.target.closest('button'); if (!b) return; [...$('presets').children].forEach(x => x.classList.toggle('on', x === b)); $('yt').value = b.dataset.yt; loadBeat(true); };
-$('ytLoad').onclick = () => loadBeat(); $('yt').onkeydown = e => { if (e.key === 'Enter') loadBeat(); };
-// The beat has its own play button, separate from the voice.
+const tilesOff = () => document.querySelectorAll('#mpBeats button, #presets button, #ytRes button').forEach(x => x.classList.remove('on'));
+$('mpBeats').onclick = e => { const b = e.target.closest('button'); if (!b) return; tilesOff(); b.classList.add('on'); playFileBeat(b.dataset.beat); };
+$('presets').onclick = e => { const b = e.target.closest('button'); if (!b) return; tilesOff(); b.classList.add('on'); $('yt').value = b.dataset.yt; useYt(); loadBeat(true); };
+$('ytLoad').onclick = () => (useYt(), loadBeat()); $('yt').onkeydown = e => { if (e.key === 'Enter') (useYt(), loadBeat()); };
 function beatUi(on) { beatOn = on; document.body.classList.toggle('beat', on); document.querySelectorAll('.beatBtn span').forEach(x => (x.textContent = on ? 'Pause beat' : 'Play beat')); }
+function useYt() { beatSrc = 'yt'; bAud.pause(); save(); }
+function playFileBeat(url) {
+  if (yt && ytReady) yt.pauseVideo();
+  beatSrc = url; mixer();
+  if (bAud.src !== url) bAud.src = url;
+  bAud.play().then(() => beatUi(true)).catch(() => { beatUi(false); $('now').textContent = 'That beat would not play just now. Try another one.'; });
+  save();
+}
+// The beat has its own play button, separate from the voice.
 function beatToggle() {
-  if (beatOn && yt && ytReady) { yt.pauseVideo(); beatUi(false); return; }
-  if (!$('yt').value) { const first = $('presets').querySelector('button'); [...$('presets').children].forEach(x => x.classList.toggle('on', x === first)); $('yt').value = first.dataset.yt; }
+  if (beatOn) { if (beatSrc && beatSrc !== 'yt') bAud.pause(); else if (yt && ytReady) yt.pauseVideo(); beatUi(false); return; }
+  if (beatSrc && beatSrc !== 'yt') return playFileBeat(beatSrc);
+  if (!beatSrc) { const first = $('mpBeats').querySelector('button'); tilesOff(); first.classList.add('on'); return playFileBeat(first.dataset.beat); }
+  if (!$('yt').value) { const first = $('presets').querySelector('button'); $('yt').value = first.dataset.yt; }
   if (yt && ytReady && curV && JSON.stringify(curV) === JSON.stringify(parseYt($('yt').value))) { vol(); yt.playVideo(); beatUi(true); }
   else loadBeat(true);
 }
 document.querySelectorAll('.beatBtn').forEach(b => (b.onclick = beatToggle));
+bAud.onerror = () => { if (beatSrc && beatSrc !== 'yt') { beatUi(false); $('now').textContent = 'That beat would not load. Check your connection, or try another.'; } };
 async function loadBeat(autoplay) {
   const v = parseYt($('yt').value); if (!v) { $('now').textContent = 'That does not look like a YouTube link.'; return; }
   let YT; try { YT = await loadYtApi(); } catch { $('now').textContent = 'YouTube did not load. Check your connection.'; return; }
@@ -159,6 +199,20 @@ async function loadBeat(autoplay) {
   });
 }
 
+/* ---------- YouTube search (needs YOUTUBE_API_KEY on Vercel; without it, YouTube's own search opens) ---------- */
+async function findBeats() {
+  const q = $('ytQ').value.trim() || 'lofi hip hop'; $('ytRes').innerHTML = '<p class="hint">Searching…</p>';
+  try {
+    const r = await fetch('/api/yt-search?q=' + encodeURIComponent(q));
+    if (r.status === 503) { $('ytRes').innerHTML = `<p class="hint">Search inside MemoPad isn't switched on yet. <a href="https://www.youtube.com/results?search_query=${encodeURIComponent(q)}" target="_blank" rel="noopener">Search on YouTube</a>, copy the link of a video you like, and paste it below.</p>`; return; }
+    if (!r.ok) throw new Error(r.status);
+    const { items } = await r.json();
+    $('ytRes').innerHTML = items.length ? items.map(x => `<button data-yt="https://www.youtube.com/watch?v=${x.id}"><img src="${esc(x.thumb)}" alt="" loading="lazy"><span><b>${esc(x.title)}</b><small>${esc(x.channel)}${x.live ? ' · live' : ''}</small></span></button>`).join('') : '<p class="hint">Nothing found. Try other words.</p>';
+  } catch { $('ytRes').innerHTML = '<p class="hint">Search did not work just now. Paste a YouTube link instead.</p>'; }
+}
+$('ytFind').onclick = findBeats; $('ytQ').onkeydown = e => { if (e.key === 'Enter') findBeats(); };
+$('ytRes').onclick = e => { const b = e.target.closest('button[data-yt]'); if (!b) return; tilesOff(); $('yt').value = b.dataset.yt; useYt(); loadBeat(true); };
+
 /* ---------- start ---------- */
 if (saved.voice && VOICES.some(v => v.id === saved.voice)) voice = saved.voice;
 ['aVol', 'mVol', 'rate', 'rep', 'gap'].forEach(id => { if (saved[id]) $(id).value = saved[id]; });
@@ -166,4 +220,6 @@ renderVoices();
 const savedFiles = (() => { try { return JSON.parse(localStorage.getItem(LS + '-files')) || []; } catch { return []; } })();
 if (savedFiles.length) Promise.all(savedFiles.map((n, i) => audioGet('reader-file-' + i).then(b => b && new File([b], n, { type: b.type })))).then(fs => { fs = fs.filter(Boolean); if (fs.length) openFiles(fs, false); else if (saved.text) { $('text').value = saved.text; openReader(); } });
 else if (saved.text) { $('text').value = saved.text; openReader(); } else countText();
+if (new URLSearchParams(location.search).has('go') && spoken.length) $('now').textContent = 'Ready. Press ▶ to hear your affirmations, and ♪ for a beat.';
 if (saved.yt) $('yt').value = saved.yt;
+if (saved.beat) { beatSrc = saved.beat; const t = beatSrc === 'yt' ? null : $('mpBeats').querySelector(`[data-beat="${beatSrc}"]`); if (t) t.classList.add('on'); }

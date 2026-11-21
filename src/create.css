@@ -193,3 +193,4 @@ body.mini #prev,body.mini #next,body.mini .pos,body.mini #more,body.mini .dset{d
 body.mini .db.big{width:42px;height:42px}
 body.mini .bb.beatBtn span{display:none}
 body.mini #mini svg{transform:rotate(180deg)}
+@media (max-width:430px){.dctl .pos{display:none}.dctl{gap:6px}.dctl .bb{padding:0 12px}}

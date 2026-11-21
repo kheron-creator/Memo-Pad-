@@ -235,3 +235,53 @@ body.rfull .rp .lsw{top:calc(10px + env(safe-area-inset-top))}
 body.rfull .rp{animation:rdrop .32s cubic-bezier(.2,.8,.2,1)}
 @keyframes rdrop{from{transform:translateY(-100%)}to{transform:none}}
 #mini.open svg{transform:rotate(180deg)}
+
+/* ---- Reader: player first, settings in one sheet ---- */
+body.rd.ready h1,body.rd.ready .sub,body.rd.ready #stText>h2{display:none}
+body.rd.ready #stText{background:none;padding:0;border:0;box-shadow:none}
+body.rd.ready .rp{min-height:min(440px,62vh)}
+.sheet{position:fixed;inset:0;z-index:70;background:#000a;display:flex;align-items:flex-end;justify-content:center;animation:shfade .2s ease}
+.sheet[hidden]{display:none}
+.shbox{width:100%;max-width:640px;max-height:86vh;overflow-y:auto;background:#121215;border-radius:22px 22px 0 0;padding:8px 16px calc(20px + env(safe-area-inset-bottom));animation:shup .28s cubic-bezier(.2,.8,.2,1)}
+.shead{position:sticky;top:0;z-index:2;display:flex;align-items:center;justify-content:space-between;background:#121215;padding:10px 2px 12px}
+.shead b{font-family:var(--head);font-size:16px}
+.shead button{border:0;background:#2a2a30;color:#fff;font-family:var(--body);font-weight:700;font-size:14px;padding:7px 16px;border-radius:16px}
+#shBody .step{background:none;border:0;padding:0;margin:0 0 18px}
+#shBody .step h2{font-size:14px;letter-spacing:1.2px;text-transform:uppercase;color:var(--mute);margin:6px 0 10px}
+#shBody .step h2 b{display:none}
+#shBody .dset{border-top:1px solid var(--line);margin:0;padding:14px 0 0}
+body.sheeton{overflow:hidden}
+@keyframes shup{from{transform:translateY(100%)}to{transform:none}}
+@keyframes shfade{from{opacity:0}to{opacity:1}}
+
+/* ---- captions: words light up as they're spoken, next line waits faintly below ---- */
+.rp .lsent{flex-direction:column;gap:14px}
+.rp .lsent .rw{color:#ffffff4d;transition:color .15s,text-shadow .15s}
+.rp .lsent .rw.past{color:#ffffffd9;text-shadow:none}
+.rp .lsent .rw.cur{color:#fff;text-shadow:0 0 18px rgba(255,255,255,.75)}
+.rp .lsent.lit .rw{color:#fff}
+.rp .lsent{text-shadow:none}
+.rp .lsent .nx{display:block;font-size:.55em;font-weight:600;color:#ffffff45;line-height:1.35;max-width:90%;animation:rin .45s ease}
+.rp:not(.cap) .lsent .nx{display:none}
+
+/* ---- calmer beat cards with soft cover art ---- */
+.cv{display:none}
+.rd .moods{grid-template-columns:1fr 1fr;gap:8px}
+.rd .moods button{background:#1b1b20;border:1px solid #26262c;border-radius:14px;min-height:0;padding:8px;flex-direction:row;align-items:center;justify-content:flex-start;gap:10px;display:grid;grid-template-columns:46px 1fr;grid-template-rows:auto auto;column-gap:10px;row-gap:0}
+.rd .moods button .cv{display:block;grid-row:1/3;width:46px;height:46px;border-radius:10px;background-color:#202028}
+.rd .moods button b{font-size:14px;font-weight:700;align-self:end;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rd .moods button small{font-size:12px;color:var(--mute);opacity:1;align-self:start;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rd .moods button.on{border-color:#25DD5F88;box-shadow:none;background:#17221b}
+.rd .moods button.on b{color:var(--green)}
+.cv{background-size:cover}
+[data-art=lofi-hiphop] .cv{background:radial-gradient(circle at 50% 50%,#1b1b20 0 14%,#0000 15%),repeating-radial-gradient(circle at 50% 50%,#ffffff10 0 1px,#0000 2px 4px),radial-gradient(circle at 30% 25%,#7a4a8a,#2a2244 70%)}
+[data-art=calm-piano] .cv{background:linear-gradient(#0000 55%,#0a0a10cc 55%),repeating-linear-gradient(90deg,#e9e6ef 0 6px,#bdb9c6 6px 7px),#e9e6ef;opacity:.85}
+[data-art=atmospheric] .cv{background:radial-gradient(circle at 30% 35%,#b58a5a99,#0000 45%),radial-gradient(circle at 70% 70%,#6a5aa099,#0000 50%),#1c1a26}
+[data-art=emotional] .cv{background:repeating-linear-gradient(0deg,#ffffff0d 0 1px,#0000 1px 7px),radial-gradient(circle at 60% 40%,#a0566e,#2a1a24 72%)}
+[data-art=soulful] .cv{background:radial-gradient(circle at 50% 60%,#d79a4a,#5a3420 55%,#21170f)}
+[data-art=rainy-lofi] .cv{background:repeating-linear-gradient(105deg,#ffffff18 0 1px,#0000 1px 6px),linear-gradient(#2c4250,#18222b)}
+[data-art=sleepy] .cv{background:radial-gradient(circle at 66% 32%,#e8e2c8 0 12%,#0000 13%),radial-gradient(circle at 74% 26%,#16203a 0 12%,#0000 13%),linear-gradient(#1a2440,#0f1424)}
+[data-art=chillhop] .cv{background:radial-gradient(circle at 40% 70%,#4f8a5f,#1d3326 65%)}
+[data-art=jazz] .cv{background:radial-gradient(circle at 50% 45%,#c9a24a88,#0000 40%),linear-gradient(135deg,#2b2a1a,#151510)}
+[data-art=synthwave] .cv{background:linear-gradient(#0000 58%,#0000 58%),repeating-linear-gradient(90deg,#d4609b33 0 1px,#0000 1px 8px) bottom/100% 40% no-repeat,radial-gradient(circle at 50% 62%,#e88a5a 0 22%,#0000 23%),linear-gradient(#2a1a3a,#4a2346)}
+[data-art=night] .cv{background:radial-gradient(circle at 20% 30%,#fff8 0 1px,#0000 2px),radial-gradient(circle at 70% 20%,#fff6 0 1px,#0000 2px),radial-gradient(circle at 55% 65%,#fff5 0 1px,#0000 2px),linear-gradient(#141a2e,#0b0e18)}

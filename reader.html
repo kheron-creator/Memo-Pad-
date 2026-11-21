@@ -21,13 +21,13 @@
   <h1>Reader</h1>
   <p class="sub">Paste or upload up to 1,000 affirmations. Pick a voice, add a beat, press play. <span class="pilot">Pilot</span></p>
 
-  <section class="step">
+  <section class="step" id="stVoice">
     <h2><b>1</b> Voice</h2>
     <div class="vrow" id="vRow"></div>
     <p class="hint" id="voiceHint"></p>
   </section>
 
-  <section class="step">
+  <section class="step" id="stText">
     <h2><b>2</b> Affirmations <span class="cnt" id="cnt"></span></h2>
     <div id="editBox">
       <textarea id="text" rows="8" placeholder="Paste your affirmations here, one per line. Lines starting with # become section titles. Already made your affirmations as audio (e.g. in ElevenLabs)? Upload the MP3s instead."></textarea>
@@ -50,6 +50,7 @@
             <button type="button" class="yb" id="rPrev" aria-label="Previous affirmation"><svg viewBox="0 0 24 24"><path d="M6 5h2.5v14H6zM19 5.9v12.2a.8.8 0 0 1-1.2.7L9.6 12.7a.8.8 0 0 1 0-1.4l8.2-6.1a.8.8 0 0 1 1.2.7z"/></svg></button>
             <button type="button" class="yb" id="rNext" aria-label="Next affirmation"><svg viewBox="0 0 24 24"><path d="M15.5 5H18v14h-2.5zM5 5.9v12.2a.8.8 0 0 0 1.2.7l8.2-6.1a.8.8 0 0 0 0-1.4L6.2 5.2A.8.8 0 0 0 5 5.9z"/></svg></button>
             <span class="ytime" id="rPos">1 / 1</span><span class="ysp"></span>
+            <button type="button" class="yb" id="rSet" aria-label="Voice, beat and speed" title="Voice, beat and speed"><svg viewBox="0 0 24 24"><path d="M4 7h10v2H4zM17 6h3v4h-3zM4 15h3v2H4zM10 14h10v4H10z"/></svg></button>
             <button type="button" class="yb" id="rMini" aria-label="Minimise to a banner" title="Minimise to a banner"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="5" rx="2"/><path d="M5 13h14v2H5zM5 17h10v2H5z" opacity=".45"/></svg></button>
             <button type="button" class="yb" id="rFull" aria-label="Full screen"><svg viewBox="0 0 24 24"><path class="fin" d="M3 3h6v2H5v4H3zM15 3h6v6h-2V5h-4zM3 15h2v4h4v2H3zM19 15h2v6h-6v-2h4z"/><path class="fout" d="M7 3h2v6H3V7h4zM15 3h2v4h4v2h-6zM3 15h6v6H7v-4H3zM15 15h6v2h-4v4h-2z"/></svg></button>
           </div>
@@ -61,7 +62,7 @@
     </div>
   </section>
 
-  <section class="step">
+  <section class="step" id="stBeat">
     <h2><b>3</b> Beat</h2>
     <p class="hint">MemoPad beats loop and keep playing when you leave the app.</p>
     <div class="moods" id="mpBeats"></div>
@@ -100,6 +101,7 @@
     </div>
   </div>
 </div>
+<div class="sheet" id="sheet" hidden><div class="shbox" role="dialog" aria-label="Voice, beat and speed"><div class="shead"><b>Voice, beat and speed</b><button type="button" id="shClose">Done</button></div><div id="shBody"></div></div></div>
 <audio id="aud" playsinline></audio>
 <audio id="bAud" playsinline loop crossorigin="anonymous" preload="none"></audio>
 <script type="module" src="/src/reader.js"></script>

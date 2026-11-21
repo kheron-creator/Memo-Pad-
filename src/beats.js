@@ -11,4 +11,4 @@ const MOODS = [
 ];
 // Suno made two takes of each mood, so there are 12 beats.
 export const MP_BEATS = MOODS.flatMap(([name, sub, cls, f]) => [1, 2].map(n => ({ name: `${name} ${n}`, sub, cls, url: `${BASE}${f}${n === 2 ? '-2' : ''}.mp3` })));
-export const mpTiles = () => MP_BEATS.map(b => `<button class="${b.cls}" data-beat="${b.url}"><b>${b.name}</b><small>${b.sub}</small></button>`).join('');
+export const mpTiles = () => MP_BEATS.map(b => `<button class="${b.cls}" data-beat="${b.url}" data-art="${b.url.split('/').pop().replace(/(-2)?\.mp3$/, '')}"><i class="cv"></i><b>${b.name}</b><small>${b.sub}</small></button>`).join('');

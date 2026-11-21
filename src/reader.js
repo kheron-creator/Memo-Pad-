@@ -51,12 +51,12 @@ function openReader() {
   docKey = String(items.length) + ':' + items.slice(0, 3).map(x => x.text).join('|').slice(0, 80);
   cur = Math.min(saved.pos?.[docKey] || 0, spoken.length - 1);
   $('lines').innerHTML = items.map((x, i) => x.head ? `<h3>${esc(x.text)}</h3>` : `<p data-i="${i}">${esc(x.text)}</p>`).join('');
-  $('editBox').hidden = true; $('readBox').hidden = false; countText(); show(false); save();
+  $('editBox').hidden = true; $('readBox').hidden = false; countText(); show(false); save(); placeSettings(true);
 }
 const esc = s => s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
 $('text').oninput = countText;
 $('load').onclick = openReader;
-$('edit').onclick = () => { stop(); localStorage.removeItem(LS + '-files'); $('readBox').hidden = true; $('editBox').hidden = false; };
+$('edit').onclick = () => { stop(); localStorage.removeItem(LS + '-files'); $('readBox').hidden = true; $('editBox').hidden = false; placeSettings(false); };
 $('file').onchange = async e => {
   const files = [...e.target.files]; const f = files[0]; if (!f) return;
   const audio = files.filter(x => x.type.startsWith('audio/') || /\.(mp3|m4a|wav|aac|ogg)$/i.test(x.name));
@@ -70,7 +70,7 @@ function openFiles(files, keep = true) {
   stop(); items = files.map(f => ({ text: f.name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' '), file: f })); spoken = items.map((_, i) => i);
   docKey = 'files:' + files.map(f => f.name).join('|').slice(0, 80); cur = 0;
   $('lines').innerHTML = items.map((x, i) => `<p data-i="${i}">♪ ${esc(x.text)}</p>`).join('');
-  $('editBox').hidden = true; $('readBox').hidden = false; $('cnt').textContent = `${files.length} audio`; show(false);
+  $('editBox').hidden = true; $('readBox').hidden = false; $('cnt').textContent = `${files.length} audio`; show(false); placeSettings(true);
   $('now').textContent = `${files.length} recording${files.length > 1 ? 's' : ''} ready. Pick a beat and press play.`;
 }
 $('lines').onclick = e => { const p = e.target.closest('p[data-i]'); if (!p) return; cur = spoken.indexOf(+p.dataset.i); play(true); };
@@ -97,12 +97,24 @@ function vol() {
   if (vG) { vG.gain.value = v; bG.gain.value = m; aud.volume = 1; bAud.volume = 1; } else { aud.volume = Math.min(1, v); bAud.volume = Math.min(1, m); }
   if (yt && ytReady) yt.setVolume(+$('mVol').value);
 }
+// word-by-word glow: each word lights up as the voice reaches it (worked out from the length of the spoken line)
+let glowWords = [], lineT = null, glowRaf = 0;
+function glow() {
+  cancelAnimationFrame(glowRaf); if (!lineT || !ac || !glowWords.length) return;
+  const p = (ac.currentTime - lineT.at) / lineT.dur, tot = glowWords.reduce((a, w) => a + w.textContent.length + 1, 0); let c = 0;
+  glowWords.forEach(w => { const s = c / tot, e = (c += w.textContent.length + 1) / tot; w.className = 'rw' + (p >= e * .97 ? ' past' : p >= s * .97 ? ' cur' : ''); });
+  if (playing && p < 1.05) glowRaf = requestAnimationFrame(glow);
+}
 function show(scroll = true) {
   const i = spoken[cur]; document.querySelectorAll('#lines p.now').forEach(p => p.classList.remove('now'));
   const p = document.querySelector(`#lines p[data-i="${i}"]`); if (p) { p.classList.add('now'); if (scroll) { const box = $('lines'); box.scrollTo({ top: p.offsetTop - box.clientHeight / 2 + p.clientHeight / 2, behavior: 'smooth' }); } }
   $('pos').textContent = `${cur + 1} / ${spoken.length}`;
   $('now').textContent = items[i]?.text || '';
-  const vc = $('vCap'); if (vc && vc.dataset.i !== String(i)) { vc.dataset.i = i; vc.innerHTML = items[i] ? `<span class="in">${esc(items[i].text)}</span>` : ''; }
+  const vc = $('vCap'); if (vc && vc.dataset.i !== String(i)) {
+    vc.dataset.i = i; const nx = items[spoken[cur + 1]];
+    vc.innerHTML = items[i] ? `<span class="in">${items[i].text.split(/\s+/).filter(Boolean).map(w => `<span class="rw">${esc(w)}</span>`).join(' ')}</span>${nx ? `<span class="nx">${esc(nx.text)}</span>` : ''}` : '';
+    vc.classList.toggle('lit', !(ac && vG && playing)); glowWords = [...vc.querySelectorAll('.rw')];
+  }
   let h = ''; for (let k = i; k >= 0; k--) if (items[k]?.head) { h = items[k].text; break; } $('rCh').textContent = h;
   $('rPos').textContent = `${cur + 1} / ${spoken.length}`; $('rFill').style.width = (spoken.length ? (cur + 1) / spoken.length * 100 : 0) + '%';
 }
@@ -144,7 +156,7 @@ function plan(k, rep, at, my) {
     const src = ac.createBufferSource(), g = ac.createGain(); src.buffer = buf; src.playbackRate.value = rate;
     g.gain.setValueAtTime(0, at); g.gain.linearRampToValueAtTime(1, at + f); g.gain.setValueAtTime(1, at + dur - f); g.gain.linearRampToValueAtTime(0, at + dur);
     src.connect(g).connect(vG); src.start(at); src.stop(at + dur + 0.05); live.push(src); src.onended = () => (live = live.filter(x => x !== src));
-    later(() => { if (my === token) { cur = k; repLeft = rep; show(); save(); } }, at - now);
+    later(() => { if (my === token) { cur = k; repLeft = rep; show(); save(); lineT = { at, dur }; glowWords.forEach(w => w.className = 'rw'); $('vCap').classList.remove('lit'); glow(); } }, at - now);
     let nk = k, nrep = rep - 1;
     if (nrep < 1) { nk = k + 1; nrep = +$('rep').value; if (nk >= spoken.length) { if ($('loopAll').checked) nk = 0; else { later(() => { if (my === token) { stop(); $('now').textContent = 'Finished. Did you get the message?'; } }, at + dur - now); return; } } }
     // line up the next one as soon as this one starts, so it is ready (and already scheduled) before this ends
@@ -171,7 +183,7 @@ aud.onended = () => {
     else { stop(); $('now').textContent = 'Finished. Did you get the message?'; }
   }, +$('gap').value * 1000);
 };
-function setBtn() { document.body.classList.toggle('playing', playing); $('rp').classList.toggle('playing', playing); }
+function setBtn() { document.body.classList.toggle('playing', playing); $('rp').classList.toggle('playing', playing); if (!playing) { $('vCap').classList.add('lit'); lineT = null; } }
 // iPhones only let sound start straight from a tap, so we start everything synchronously here
 // (a silent clip unlocks the voice player, then later lines can play on their own).
 const SILENT = (() => { const n = 800, b = new ArrayBuffer(44 + n * 2), d = new DataView(b), w = (o, t) => [...t].forEach((c, i) => d.setUint8(o + i, c.charCodeAt(0)));
@@ -192,7 +204,17 @@ function stop() { playing = false; token++; clearTimeout(gapTimer); halt(); aud.
 $('play').onclick = () => (playing ? stop() : play(false));
 $('prev').onclick = () => { if (!spoken.length) return; cur = Math.max(0, cur - 1); playing ? (repLeft = +$('rep').value, speakCurrent()) : show(); };
 $('next').onclick = () => { if (!spoken.length) return; cur = Math.min(spoken.length - 1, cur + 1); playing ? (repLeft = +$('rep').value, speakCurrent()) : show(); };
-$('more').onclick = () => ($('dset').hidden = !$('dset').hidden);
+// one settings sheet for voice, beat and speed once your affirmations are loaded, so the page is just the player
+function placeSettings(ready) {
+  document.body.classList.toggle('ready', ready);
+  const body = $('shBody'), main = $('stText');
+  if (ready) { [$('stVoice'), $('stBeat')].forEach(x => body.appendChild(x)); body.appendChild($('dset')); $('dset').hidden = false; window.scrollTo(0, 0); }
+  else { main.before($('stVoice')); main.after($('stBeat')); $('dock').appendChild($('dset')); $('dset').hidden = true; setSheet(false); }
+}
+function setSheet(on) { $('sheet').hidden = !on; document.body.classList.toggle('sheeton', on); }
+$('more').onclick = () => document.body.classList.contains('ready') ? setSheet($('sheet').hidden) : ($('dset').hidden = !$('dset').hidden);
+$('rSet').onclick = () => setSheet(true); $('shClose').onclick = () => setSheet(false);
+$('sheet').addEventListener('click', e => { if (e.target.id === 'sheet') setSheet(false); });
 
 /* ---------- views: words (captions), waves, bars, circle, timer ---------- */
 const COLS = ['#25DD5F', '#FFB000', '#EB7100', '#E10195'];
@@ -273,7 +295,7 @@ function sleepNow() {
   setTimeout(() => { stop(); if (beatOn) beatToggle(); vol(); $('now').textContent = 'Sleep well. Did you get the message?'; }, 8200);
 }
 // minimise: the whole page folds into a slim banner at the top that keeps playing
-function setMini(on) { document.body.classList.toggle('mini', on);  $('dset').hidden = true; window.scrollTo(0, 0); draw(); }
+function setMini(on) { document.body.classList.toggle('mini', on); setSheet(false); if (!document.body.classList.contains('ready')) $('dset').hidden = true; window.scrollTo(0, 0); draw(); }
 // the dropdown button opens the captions player (MemoPad style); the player's own button minimises to a banner
 $('mini').onclick = () => setFull(!document.body.classList.contains('rfull'));
 $('rMini').onclick = () => { setFull(false); setMini(true); };

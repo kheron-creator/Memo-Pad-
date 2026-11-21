@@ -5,6 +5,7 @@ import './create.css';
 import { audioPut, supabase, BUCKET, TABLE, trackToRow } from './cloud.js';
 import { VOICES, orb } from './voices.js';
 import { speakBlob, elevenReason } from './tts.js';
+import { addMic } from './dictate.js';
 const $ = id => document.getElementById(id);
 const SR = 44100;
 let vMode = 'ai', mMode = 'calm', recBlob = null, voiceFileBlob = null, musicFileBuf = null, aiBuf = null, busy = false, outUrl = null, last = null;
@@ -272,6 +273,7 @@ $('make').onclick = async () => {
 };
 
 $('write').onclick = writeForMe;
+['goal', 'why', 'include', 'who', 'text'].forEach(id => addMic($(id)));
 $('text').oninput = updateCount; $('rep').onchange = updateCount; $('gap').onchange = updateCount;
 $('goal').onkeydown = e => { if (e.key === 'Enter') writeForMe(); };
 

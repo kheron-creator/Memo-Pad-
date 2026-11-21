@@ -6,6 +6,7 @@ import { VOICES, orb } from './voices.js';
 import { speakBlob } from './tts.js';
 import { parseYt, loadYtApi, beatTiles } from './yt.js';
 import { mpTiles } from './beats.js';
+import { LOFI_DRAW } from './lofi.js';
 import { docxText } from './docx.js';
 import { audioGet, audioPut, supabase } from './cloud.js';
 import { dayOf, pushDays, otherDays } from './listentime.js';
@@ -17,7 +18,7 @@ let yt = null, ytReady = false, beatOn = false, curV = null, beatSrc = '';
 
 /* ---------- saved state ---------- */
 const saved = (() => { try { return JSON.parse(localStorage.getItem(LS)) || {}; } catch { return {}; } })();
-const save = () => { saved.pos = { ...(saved.pos || {}), [docKey]: cur }; localStorage.setItem(LS, JSON.stringify({ text: $('text').value, voice, pos: saved.pos, yt: $('yt').value, aVol: $('aVol').value, mVol: $('mVol').value, rate: $('rate').value, rep: $('rep').value, gap: $('gap').value, beat: beatSrc, view })); };
+const save = () => { saved.pos = { ...(saved.pos || {}), [docKey]: cur }; localStorage.setItem(LS, JSON.stringify({ text: $('text').value, voice, pos: saved.pos, yt: $('yt').value, aVol: $('aVol').value, mVol: $('mVol').value, rate: $('rate').value, rep: $('rep').value, gap: $('gap').value, beat: beatSrc, view, lofi: typeof lofiScene === 'undefined' ? 'glass' : lofiScene })); };
 
 /* ---------- voice row ---------- */
 function renderVoices() {
@@ -101,7 +102,9 @@ function show(scroll = true) {
   const p = document.querySelector(`#lines p[data-i="${i}"]`); if (p) { p.classList.add('now'); if (scroll) { const box = $('lines'); box.scrollTo({ top: p.offsetTop - box.clientHeight / 2 + p.clientHeight / 2, behavior: 'smooth' }); } }
   $('pos').textContent = `${cur + 1} / ${spoken.length}`;
   $('now').textContent = items[i]?.text || '';
-  const vc = document.getElementById('vCap'); if (vc) vc.textContent = items[i]?.text || '';
+  const vc = $('vCap'); if (vc && vc.dataset.i !== String(i)) { vc.dataset.i = i; vc.innerHTML = items[i] ? `<span class="in">${esc(items[i].text)}</span>` : ''; }
+  let h = ''; for (let k = i; k >= 0; k--) if (items[k]?.head) { h = items[k].text; break; } $('rCh').textContent = h;
+  $('rPos').textContent = `${cur + 1} / ${spoken.length}`; $('rFill').style.width = (spoken.length ? (cur + 1) / spoken.length * 100 : 0) + '%';
 }
 // ElevenLabs voices: pace is made by ElevenLabs itself (sounds natural); free voices use the player's speed
 const isEl = () => voice.startsWith('el:');
@@ -168,7 +171,7 @@ aud.onended = () => {
     else { stop(); $('now').textContent = 'Finished. Did you get the message?'; }
   }, +$('gap').value * 1000);
 };
-function setBtn() { document.body.classList.toggle('playing', playing); }
+function setBtn() { document.body.classList.toggle('playing', playing); $('rp').classList.toggle('playing', playing); }
 // iPhones only let sound start straight from a tap, so we start everything synchronously here
 // (a silent clip unlocks the voice player, then later lines can play on their own).
 const SILENT = (() => { const n = 800, b = new ArrayBuffer(44 + n * 2), d = new DataView(b), w = (o, t) => [...t].forEach((c, i) => d.setUint8(o + i, c.charCodeAt(0)));
@@ -193,13 +196,21 @@ $('more').onclick = () => ($('dset').hidden = !$('dset').hidden);
 
 /* ---------- views: words (captions), waves, bars, circle, timer ---------- */
 const COLS = ['#25DD5F', '#FFB000', '#EB7100', '#E10195'];
-let view = saved.view || 'words', raf = 0, envL = 0;
+const LOFI = ['glass', 'neon', 'path', 'boat'];
+let view = saved.view || 'words', raf = 0, envL = 0, lofiScene = LOFI.includes(saved.lofi) ? saved.lofi : 'glass';
 function setView(v) {
   view = v; [...$('viewSw').children].forEach(b => b.classList.toggle('on', b.dataset.v === v));
-  $('lines').hidden = v !== 'words'; $('viz').hidden = v === 'words'; $('vTime').hidden = v !== 'time';
-  if (v === 'words') show(); save(); draw();
+  const rp = $('rp'); rp.classList.toggle('cap', v === 'words'); rp.classList.toggle('tm', v === 'time'); $('vTime').hidden = v !== 'time';
+  LOFI.forEach(k => rp.classList.toggle('lofi-' + k, v === 'lofi' && lofiScene === k));
+  save(); draw();
 }
-$('viewSw').onclick = e => { const b = e.target.closest('button'); if (b) setView(b.dataset.v); };
+// Lofi: press it again for the next rainy scene, like in MemoPad
+$('viewSw').onclick = e => { const b = e.target.closest('button'); if (!b) return; if (b.dataset.v === 'lofi' && view === 'lofi') { lofiScene = LOFI[(LOFI.indexOf(lofiScene) + 1) % LOFI.length]; } setView(b.dataset.v); };
+$('rPlay').onclick = () => $('play').click(); $('rPrev').onclick = () => $('prev').click(); $('rNext').onclick = () => $('next').click();
+$('rBar').onclick = e => { if (!spoken.length) return; const r = $('rBar').getBoundingClientRect(); cur = Math.max(0, Math.min(spoken.length - 1, Math.floor((e.clientX - r.left) / r.width * spoken.length))); playing ? (repLeft = +$('rep').value, speakCurrent()) : show(); };
+function setFull(on) { document.body.classList.toggle('rfull', on); $('rFull').setAttribute('aria-label', on ? 'Exit full screen' : 'Full screen'); setTimeout(draw, 50); }
+$('rFull').onclick = () => setFull(!document.body.classList.contains('rfull'));
+addEventListener('keydown', e => { if (e.key === 'Escape' && document.body.classList.contains('rfull')) setFull(false); });
 const lerp = (a, b, t) => Math.round(a + (b - a) * t);
 function colAt(t) { t = Math.max(0, Math.min(.999, t)) * (COLS.length - 1); const i = Math.floor(t), f = t - i, h = c => [1, 3, 5].map(k => parseInt(c.slice(k, k + 2), 16)); const [a, b] = [h(COLS[i]), h(COLS[i + 1])]; return `rgb(${lerp(a[0], b[0], f)},${lerp(a[1], b[1], f)},${lerp(a[2], b[2], f)})`; }
 const F = new Uint8Array(128), T = new Uint8Array(256);
@@ -213,15 +224,16 @@ function draw() {
   const band = k => { let m = 0; const a = Math.floor(2 + k * 1.6), b = Math.floor(2 + (k + 1) * 1.6); for (let i = a; i <= b; i++) m = Math.max(m, F[i] || 0); return Math.pow(m / 255, 1.5); };
   let tot = 0; for (let k = 0; k < 32; k++) tot += band(k); const lvl = tot / 32; envL += (lvl - envL) * (lvl > envL ? .4 : .1);
   x.clearRect(0, 0, W, H);
-  const style = mini ? 'bars' : view, cx = W / 2, cy = H / 2, M = Math.min(W, H), idle = playing ? 0 : 0.04 + 0.02 * Math.sin(performance.now() / 600);
+  if (view === 'lofi' && !mini) { x.save(); LOFI_DRAW[lofiScene](x, W, H, Math.min(W, H), envL, performance.now() / 1000); x.restore(); raf = requestAnimationFrame(draw); return; }
+  const style = mini ? 'bars' : view, cx = W / 2, cy = mini ? H / 2 : H * .44, M = Math.min(W, H), idle = playing ? 0 : 0.04 + 0.02 * Math.sin(performance.now() / 600);
   if (style === 'bars' || style === 'time') {
     const N = mini ? 12 : 28, gap = (mini ? 2 : 4) * d, bw = Math.max(1, Math.min((mini ? 4 : 16) * d, W / (N * 2) - gap));
-    for (let k = 0; k < N; k++) { const h = Math.max(3 * d, (band(k) + idle) * H * (style === 'time' ? .35 : .8)); x.fillStyle = colAt(k / N); x.globalAlpha = style === 'time' ? .55 : 1;
-      [cx + k * (bw + gap) + gap / 2, cx - (k + 1) * (bw + gap) + gap / 2].forEach(px => { x.beginPath(); x.roundRect ? x.roundRect(px, (style === 'time' ? H * .82 : cy) - h / 2, bw, h, bw / 2) : x.rect(px, cy - h / 2, bw, h); x.fill(); }); }
+    for (let k = 0; k < N; k++) { const h = Math.max(3 * d, (band(k) + idle) * H * (style === 'time' ? .3 : .5)); x.fillStyle = colAt(k / N); x.globalAlpha = style === 'time' ? .55 : 1;
+      [cx + k * (bw + gap) + gap / 2, cx - (k + 1) * (bw + gap) + gap / 2].forEach(px => { x.beginPath(); x.roundRect ? x.roundRect(px, (style === 'time' ? H * .66 : cy) - h / 2, bw, h, bw / 2) : x.rect(px, cy - h / 2, bw, h); x.fill(); }); }
     x.globalAlpha = 1;
   } else if (style === 'circle') {
-    const N = 72, r0 = M * .2 + envL * M * .05; x.lineCap = 'round'; x.lineWidth = Math.max(3 * d, 2 * Math.PI * r0 / N * .55);
-    for (let k = 0; k < N; k++) { const a = k / N * Math.PI * 2 - Math.PI / 2, kk = k < N / 2 ? k : N - k, len = (band(kk % 32) + idle) * M * .22 + 3 * d; x.strokeStyle = colAt(kk / (N / 2)); x.beginPath(); x.moveTo(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0); x.lineTo(cx + Math.cos(a) * (r0 + len), cy + Math.sin(a) * (r0 + len)); x.stroke(); }
+    const N = 72, r0 = M * .13 + envL * M * .04; x.lineCap = 'round'; x.lineWidth = Math.max(3 * d, 2 * Math.PI * r0 / N * .55);
+    for (let k = 0; k < N; k++) { const a = k / N * Math.PI * 2 - Math.PI / 2, kk = k < N / 2 ? k : N - k, len = (band(kk % 32) + idle) * M * .15 + 3 * d; x.strokeStyle = colAt(kk / (N / 2)); x.beginPath(); x.moveTo(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0); x.lineTo(cx + Math.cos(a) * (r0 + len), cy + Math.sin(a) * (r0 + len)); x.stroke(); }
   } else { // waves: three soft lines that move with the voice and beat
     for (let L = 0; L < 3; L++) { x.beginPath(); x.lineWidth = (3 - L) * 1.5 * d; x.strokeStyle = COLS[[0, 1, 3][L]]; x.globalAlpha = 1 - L * .25;
       for (let i = 0; i <= 64; i++) { const px = i / 64 * W, v = (T[Math.floor(i * 3.9)] - 128) / 128, s = Math.sin(i / 64 * Math.PI); const py = cy + (v * 1.6 + Math.sin(i / 5 + performance.now() / (500 + L * 180)) * (envL + idle) * .9) * H * .38 * s * (1 - L * .2); i ? x.lineTo(px, py) : x.moveTo(px, py); }
@@ -346,4 +358,4 @@ else if (saved.text) { $('text').value = saved.text; openReader(); } else countT
 if (new URLSearchParams(location.search).has('go') && spoken.length) $('now').textContent = 'Ready. Press ▶ to hear your affirmations, and ♪ for a beat.';
 if (saved.yt) $('yt').value = saved.yt;
 if (saved.beat) { beatSrc = saved.beat; const t = beatSrc === 'yt' ? null : $('mpBeats').querySelector(`[data-beat="${beatSrc}"]`); if (t) t.classList.add('on'); }
-setView(['words', 'wave', 'bars', 'circle', 'time'].includes(view) ? view : 'words');
+setView(['words', 'wave', 'bars', 'circle', 'time', 'lofi'].includes(view) ? view : 'words');

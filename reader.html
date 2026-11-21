@@ -37,9 +37,25 @@
       </div>
     </div>
     <div id="readBox" hidden>
-      <div class="chips small vsw" id="viewSw" role="group" aria-label="What to look at"><button data-v="words" class="on">Words</button><button data-v="wave">Waves</button><button data-v="bars">Bars</button><button data-v="circle">Circle</button><button data-v="time">Timer</button></div>
+      <div class="rp" id="rp">
+        <canvas id="vizC"></canvas>
+        <div class="lsw" id="viewSw" role="group" aria-label="View style"><button type="button" data-v="words">Captions</button><button type="button" data-v="wave">Waves</button><button type="button" data-v="bars">Bars</button><button type="button" data-v="circle">Circle</button><button type="button" data-v="time">Listen Time</button><button type="button" data-v="lofi">Lofi</button></div>
+        <div class="ych" id="rCh"></div>
+        <div class="vtime" id="vTime" hidden><b id="vClock">0:00</b><small id="vSub">listened today</small></div>
+        <div class="lsent" id="vCap"></div>
+        <div class="ybar">
+          <div class="lbar" id="rBar"><div class="ltrack"><i id="rFill"></i></div></div>
+          <div class="yrow">
+            <button type="button" class="yb" id="rPlay" aria-label="Play or pause"><svg viewBox="0 0 24 24"><path class="ip" d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/><path class="ipa" d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg></button>
+            <button type="button" class="yb" id="rPrev" aria-label="Previous affirmation"><svg viewBox="0 0 24 24"><path d="M6 5h2.5v14H6zM19 5.9v12.2a.8.8 0 0 1-1.2.7L9.6 12.7a.8.8 0 0 1 0-1.4l8.2-6.1a.8.8 0 0 1 1.2.7z"/></svg></button>
+            <button type="button" class="yb" id="rNext" aria-label="Next affirmation"><svg viewBox="0 0 24 24"><path d="M15.5 5H18v14h-2.5zM5 5.9v12.2a.8.8 0 0 0 1.2.7l8.2-6.1a.8.8 0 0 0 0-1.4L6.2 5.2A.8.8 0 0 0 5 5.9z"/></svg></button>
+            <span class="ytime" id="rPos">1 / 1</span><span class="ysp"></span>
+            <button type="button" class="yb" id="rFull" aria-label="Full screen"><svg viewBox="0 0 24 24"><path class="fin" d="M3 3h6v2H5v4H3zM15 3h6v6h-2V5h-4zM3 15h2v4h4v2H3zM19 15h2v6h-6v-2h4z"/><path class="fout" d="M7 3h2v6H3V7h4zM15 3h2v4h4v2h-6zM3 15h6v6H7v-4H3zM15 15h6v2h-4v4h-2z"/></svg></button>
+          </div>
+        </div>
+      </div>
+      <h3 class="allh">All affirmations</h3>
       <div class="lines" id="lines"></div>
-      <div class="viz" id="viz" hidden><canvas id="vizC"></canvas><div class="vtime" id="vTime" hidden><b id="vClock">0:00</b><small id="vSub">listened today</small></div><p class="vcap" id="vCap"></p></div>
       <div class="row"><button id="edit" class="ghost">Edit text</button></div>
     </div>
   </section>

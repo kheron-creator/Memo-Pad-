@@ -44,10 +44,30 @@ function addName(L, who, where) { // the name opens the track; "often" brings it
   if (where === 'often') for (let i = 10; i < L.length; i += 11) L.splice(i, 0, `${who}, you are doing so well.`);
   L.push(`${who}, did you get the message?`); return L;
 }
+// ready-made words for each area, mixed with simple openings so any number of lines (up to 500+) can be made without the AI writer
+const QUAL = {
+  Mentally: ['focused', 'clear-minded', 'calm under pressure', 'curious', 'sharp', 'present', 'open to learning', 'resourceful', 'patient with myself', 'wise'],
+  Emotionally: ['at peace', 'steady', 'gentle with myself', 'resilient', 'hopeful', 'grounded', 'safe in my own skin', 'joyful', 'balanced', 'kind to myself'],
+  Professionally: ['valuable', 'skilled', 'reliable', 'confident at work', 'creative', 'organised', 'prepared', 'a strong leader', 'paid well for my skills', 'proud of my work'],
+  Physically: ['strong', 'healthy', 'full of energy', 'well rested', 'active', 'flexible', 'well nourished', 'comfortable in my body', 'fit', 'fully alive'],
+  Socially: ['friendly', 'a good listener', 'warm', 'generous', 'supported', 'connected', 'welcome', 'easy to be around', 'appreciated', 'loving towards others'],
+  Romantically: ['loved', 'loving', 'worthy of love', 'open-hearted', 'cherished', 'attractive', 'patient in love', 'honest in love', 'adored', 'deeply connected'],
+  Spiritually: ['guided', 'blessed', 'grateful', 'faithful', 'living my purpose', 'protected', 'humble', 'full of grace', 'trusting', 'aligned'],
+  Financially: ['abundant', 'wise with money', 'prosperous', 'generous with money', 'calm about money', 'rich in opportunity', 'a good saver', 'open to wealth', 'financially free', 'secure'],
+};
+const STEMS = ['I am {q}.', 'Today I am {q}.', 'I choose to be {q}.', 'I allow myself to be {q}.', 'It is natural for me to be {q}.', 'I am proud to be {q}.', 'Every day I am {q}.', 'Right now, I am {q}.', 'I give myself permission to be {q}.', 'I was made to be {q}.'];
+function bankPool(list, g) {
+  const goalLines = g ? GOAL.map(t => t.replace('{g}', g.charAt(0).toLowerCase() + g.slice(1))) : [];
+  return [...new Set([...goalLines, ...list.flatMap(a => BANK[a] || []), ...list.flatMap(a => (QUAL[a] || []).flatMap(q => STEMS.map(t => t.replace('{q}', q))))])];
+}
 function bankLines(n, g) { // built-in lines, used when the AI writer is not available
-  const goalLines = g ? shuffle(GOAL).map(t => t.replace('{g}', g.charAt(0).toLowerCase() + g.slice(1))) : [];
-  const pool = shuffle([...new Set([...goalLines, ...(areas().length ? areas() : ['Professionally']).flatMap(a => BANK[a] || [])])]);
-  return pool.slice(0, n);
+  const mine = areas().length ? areas() : ['Professionally'];
+  let pool = shuffle(bankPool(mine, g));
+  if (pool.length < n) pool = [...pool, ...shuffle(bankPool(Object.keys(QUAL), '').filter(x => !pool.includes(x)))];
+  if (n !== 500) return pool.slice(0, n);
+  const ch = chapters(g), out = [];
+  ch.forEach((c, i) => out.push(`# ${c}`, ...pool.slice(i * 50, i * 50 + 50)));
+  return out;
 }
 let writing = false;
 async function writeForMe() {
@@ -75,7 +95,7 @@ async function writeForMe() {
     }
     info('Done. Edit any line you like, then press Play now or Make my track.');
   } catch (e) {
-    out = bankLines(Math.min(n, 60), g);
+    out = bankLines(n, g);
     info(e.status === 401 ? 'Sign in on the MemoPad home page so MemoPad can write lines just for you. For now, here are some ready-made ones.'
       : e.status === 503 || e.status === 404 ? 'The personal writer is not switched on yet, so here are ready-made lines for your areas.'
       : 'The writer was busy, so here are ready-made lines for now. Try again in a minute.');

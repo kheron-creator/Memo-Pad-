@@ -44,6 +44,9 @@
 
   <section class="step">
     <h2><b>3</b> Beat</h2>
+    <p class="hint">MemoPad beats loop and keep playing when you leave the app.</p>
+    <div class="moods" id="mpBeats"></div>
+    <p class="hint">YouTube beats (these stop when you leave the app)</p>
     <div class="moods" id="presets"></div>
     <div class="row"><input id="ytQ" type="search" placeholder="Search YouTube, e.g. lofi rain" autocomplete="off"><button id="ytFind" class="ghost">Search</button></div>
     <div class="ytres" id="ytRes"></div>
@@ -76,6 +79,7 @@
   </div>
 </div>
 <audio id="aud" playsinline></audio>
+<audio id="bAud" playsinline loop crossorigin="anonymous" preload="none"></audio>
 <script type="module" src="/src/reader.js"></script>
 </body>
 </html>

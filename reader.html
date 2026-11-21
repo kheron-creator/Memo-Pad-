@@ -37,7 +37,9 @@
       </div>
     </div>
     <div id="readBox" hidden>
+      <div class="chips small vsw" id="viewSw" role="group" aria-label="What to look at"><button data-v="words" class="on">Words</button><button data-v="wave">Waves</button><button data-v="bars">Bars</button><button data-v="circle">Circle</button><button data-v="time">Timer</button></div>
       <div class="lines" id="lines"></div>
+      <div class="viz" id="viz" hidden><canvas id="vizC"></canvas><div class="vtime" id="vTime" hidden><b id="vClock">0:00</b><small id="vSub">listened today</small></div><p class="vcap" id="vCap"></p></div>
       <div class="row"><button id="edit" class="ghost">Edit text</button></div>
     </div>
   </section>
@@ -58,6 +60,7 @@
 </main>
 
 <div class="dock" id="dock">
+  <canvas id="miniC" class="minic" aria-hidden="true"></canvas>
   <div class="now" id="now">Press ▶ for the voice and ♪ for the beat</div>
   <div class="dctl">
     <button class="db" id="prev" aria-label="Previous"><svg viewBox="0 0 24 24"><path d="M6 5h2.5v14H6zM19 5.9v12.2a.8.8 0 0 1-1.2.7L9.6 12.7a.8.8 0 0 1 0-1.4l8.2-6.1a.8.8 0 0 1 1.2.7z"/></svg></button>
@@ -65,6 +68,7 @@
     <button class="db" id="next" aria-label="Next"><svg viewBox="0 0 24 24"><path d="M15.5 5H18v14h-2.5zM5 5.9v12.2a.8.8 0 0 0 1.2.7l8.2-6.1a.8.8 0 0 0 0-1.4L6.2 5.2A.8.8 0 0 0 5 5.9z"/></svg></button>
     <span class="pos" id="pos">0 / 0</span>
     <button class="bb beatBtn" type="button" aria-label="Play or pause the beat">♪&nbsp;<span>Play beat</span></button>
+    <button class="db" id="mini" aria-label="Minimise to a banner" title="Minimise"><svg viewBox="0 0 24 24"><path d="M6 9.5l6 6 6-6" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
     <button class="db" id="more" aria-label="Settings"><svg viewBox="0 0 24 24"><path d="M4 7h10v2H4zM17 6h3v4h-3zM4 15h3v2H4zM10 14h10v4H10z" opacity=".9"/></svg></button>
   </div>
   <div class="dset" id="dset" hidden>
@@ -75,6 +79,7 @@
       <label>Say each <select id="rep"><option value="1">once</option><option value="2">twice</option><option value="3">3×</option></select></label>
       <label>Pause <select id="gap"><option value="0.3" selected>flowing</option><option value="0.8">short</option><option value="2">medium</option><option value="4">long</option></select></label>
       <label><input type="checkbox" id="loopAll"> Loop</label>
+      <label>Sleep timer <select id="sleep"><option value="0">off</option><option value="10">10 min</option><option value="20">20 min</option><option value="30">30 min</option><option value="45">45 min</option><option value="60">1 hour</option></select></label>
     </div>
   </div>
 </div>

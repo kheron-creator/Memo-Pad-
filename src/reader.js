@@ -16,7 +16,7 @@ let yt = null, ytReady = false, beatOn = false, curV = null, beatSrc = '';
 
 /* ---------- saved state ---------- */
 const saved = (() => { try { return JSON.parse(localStorage.getItem(LS)) || {}; } catch { return {}; } })();
-const save = () => { saved.pos = { ...(saved.pos || {}), [docKey]: cur }; localStorage.setItem(LS, JSON.stringify({ text: $('text').value, voice, pos: saved.pos, yt: $('yt').value, aVol: $('aVol').value, mVol: $('mVol').value, rate: $('rate').value, rep: $('rep').value, gap: $('gap').value, beat: beatSrc })); };
+const save = () => { saved.pos = { ...(saved.pos || {}), [docKey]: cur }; localStorage.setItem(LS, JSON.stringify({ text: $('text').value, voice, pos: saved.pos, yt: $('yt').value, aVol: $('aVol').value, mVol: $('mVol').value, rate: $('rate').value, rep: $('rep').value, gap: $('gap').value, beat: beatSrc, view })); };
 
 /* ---------- voice row ---------- */
 function renderVoices() {
@@ -25,7 +25,7 @@ function renderVoices() {
   $('voiceHint').innerHTML = (v.id.startsWith('el:') ? 'Natural ElevenLabs voice. Each line uses credits the first time only.' : 'Free voice on this device. Downloads once, about 60 MB.') + (v.preview ? ' <a href="#" id="sample">Hear a sample</a>' : '');
   const s = $('sample'); if (s) s.onclick = e => { e.preventDefault(); new Audio(v.preview).play(); };
 }
-$('vRow').onclick = e => { const b = e.target.closest('.vchip'); if (!b) return; voice = b.dataset.id; renderVoices(); prefetch(); save(); };
+$('vRow').onclick = e => { const b = e.target.closest('.vchip'); if (!b) return; voice = b.dataset.id; renderVoices(); prefetch(); save(); if (playing && ac) speakCurrent(); };
 
 /* ---------- text ---------- */
 const clean = s => s.replace(/^\s*(?:[-*•·]|\d+[.)])\s+/, '').trim();
@@ -77,14 +77,15 @@ $('lines').onclick = e => { const p = e.target.closest('p[data-i]'); if (!p) ret
 // Phones ignore an audio player's own volume, so the voice and the MemoPad beat each go through a Web Audio
 // volume knob (gain). 'playback' tells iPhones to ignore the silent switch and keep playing in the background.
 if (navigator.audioSession) try { navigator.audioSession.type = 'playback'; } catch {}
-let ac = null, vG = null, bG = null;
+let ac = null, vG = null, bG = null, an = null;
 function mixer() {
   if (!ac) try {
     ac = new (window.AudioContext || window.webkitAudioContext)();
     vG = ac.createGain(); bG = ac.createGain();
     ac.createMediaElementSource(aud).connect(vG).connect(ac.destination);
     ac.createMediaElementSource(bAud).connect(bG).connect(ac.destination);
-  } catch { ac = vG = bG = null; }
+    an = ac.createAnalyser(); an.fftSize = 256; an.smoothingTimeConstant = 0.75; vG.connect(an); bG.connect(an);
+  } catch { ac = vG = bG = an = null; }
   if (ac && ac.state !== 'running') ac.resume().catch(() => {});
   vol();
 }
@@ -99,6 +100,7 @@ function show(scroll = true) {
   const p = document.querySelector(`#lines p[data-i="${i}"]`); if (p) { p.classList.add('now'); if (scroll) { const box = $('lines'); box.scrollTo({ top: p.offsetTop - box.clientHeight / 2 + p.clientHeight / 2, behavior: 'smooth' }); } }
   $('pos').textContent = `${cur + 1} / ${spoken.length}`;
   $('now').textContent = items[i]?.text || '';
+  const vc = document.getElementById('vCap'); if (vc) vc.textContent = items[i]?.text || '';
 }
 // ElevenLabs voices: pace is made by ElevenLabs itself (sounds natural); free voices use the player's speed
 const isEl = () => voice.startsWith('el:');
@@ -106,8 +108,48 @@ const elSpeed = () => isEl() ? Math.min(1.2, Math.max(0.7, +$('rate').value || 1
 const ctxOf = i => { const k = spoken.indexOf(i); return { prev: items[spoken[k - 1]]?.text || '', next: items[spoken[k + 1]]?.text || '' }; };
 function prefetch() { for (let k = 1; k <= AHEAD; k++) { const i = spoken[cur + k]; if (i != null && !items[i].file) speakBlob(items[i].text, voice, undefined, elSpeed(), ctxOf(i)).catch(() => {}); } }
 let token = 0, lastSrc = '';
+/* Smooth playback: each line is decoded once, its silent edges are trimmed, and the next line (or the repeat) is
+   scheduled on the audio clock while the current one is still playing, with tiny fades. No gaps from loading,
+   no clicks between lines, and it keeps going with the screen locked. (Old browsers fall back to the plain player.) */
+const bufs = new Map(); let live = [], timers = [];
+function trim(buf) {
+  const ch = [...Array(buf.numberOfChannels)].map((_, c) => buf.getChannelData(c)), n = buf.length, th = 0.012, pad = Math.round(buf.sampleRate * 0.04);
+  let a = 0, z = n - 1; const loud = i => ch.some(d => Math.abs(d[i]) > th);
+  while (a < n && !loud(a)) a++; while (z > a && !loud(z)) z--;
+  a = Math.max(0, a - pad); z = Math.min(n - 1, z + pad * 2); if (z - a < buf.sampleRate * 0.2) return buf;
+  const out = ac.createBuffer(buf.numberOfChannels, z - a + 1, buf.sampleRate);
+  ch.forEach((d, c) => out.copyToChannel(d.subarray(a, z + 1), c)); return out;
+}
+function bufFor(i, onDl) {
+  const it = items[i], k = it.file ? 'f' + i + it.file.name : voice + '|' + elSpeed() + '|' + it.text + '|' + (items[spoken[spoken.indexOf(i) + 1]]?.text || '');
+  if (bufs.has(k)) return bufs.get(k);
+  const pr = (it.file ? Promise.resolve(it.file) : speakBlob(it.text, voice, onDl, elSpeed(), ctxOf(i)))
+    .then(b => b.arrayBuffer()).then(x => new Promise((res, rej) => ac.decodeAudioData(x, res, rej))).then(b => (it.file ? b : trim(b)));
+  pr.catch(() => bufs.delete(k)); bufs.set(k, pr);
+  if (bufs.size > 30) bufs.delete(bufs.keys().next().value);
+  return pr;
+}
+function halt() { live.forEach(n => { try { n.stop(); } catch {} }); live = []; timers.forEach(clearTimeout); timers = []; }
+const later = (f, sec) => timers.push(setTimeout(f, Math.max(0, sec) * 1000));
+function plan(k, rep, at, my) {
+  const i = spoken[k];
+  bufFor(i, p => ($('now').textContent = `Downloading the free voice… ${Math.round(p * 100)}%`)).then(buf => {
+    if (my !== token || !playing) return;
+    const now = ac.currentTime; at = Math.max(at, now + 0.03);
+    const rate = isEl() || items[i].file ? 1 : +$('rate').value, dur = buf.duration / rate, f = Math.min(0.02, dur / 4);
+    const src = ac.createBufferSource(), g = ac.createGain(); src.buffer = buf; src.playbackRate.value = rate;
+    g.gain.setValueAtTime(0, at); g.gain.linearRampToValueAtTime(1, at + f); g.gain.setValueAtTime(1, at + dur - f); g.gain.linearRampToValueAtTime(0, at + dur);
+    src.connect(g).connect(vG); src.start(at); src.stop(at + dur + 0.05); live.push(src); src.onended = () => (live = live.filter(x => x !== src));
+    later(() => { if (my === token) { cur = k; repLeft = rep; show(); save(); } }, at - now);
+    let nk = k, nrep = rep - 1;
+    if (nrep < 1) { nk = k + 1; nrep = +$('rep').value; if (nk >= spoken.length) { if ($('loopAll').checked) nk = 0; else { later(() => { if (my === token) { stop(); $('now').textContent = 'Finished. Did you get the message?'; } }, at + dur - now); return; } } }
+    // line up the next one as soon as this one starts, so it is ready (and already scheduled) before this ends
+    later(() => { if (my === token) { plan(nk, nrep, at + dur + +$('gap').value, my); for (let x = 1; x <= AHEAD; x++) { const j = spoken[nk + x]; if (j != null) bufFor(j).catch(() => {}); } } }, at - now);
+  }).catch(err => { if (my === token) { stop(); $('now').textContent = 'The voice could not play: ' + (err.message || err) + '.'; } });
+}
 async function speakCurrent() {
-  const my = ++token; clearTimeout(gapTimer); show();
+  const my = ++token; clearTimeout(gapTimer); halt(); show();
+  if (ac && vG) { aud.pause(); plan(cur, repLeft || +$('rep').value, ac.currentTime, my); return; }
   const line = items[spoken[cur]];
   try {
     const blob = line.file || await speakBlob(line.text, voice, p => ($('now').textContent = `Downloading the free voice… ${Math.round(p * 100)}%`), elSpeed(), ctxOf(spoken[cur]));
@@ -117,7 +159,7 @@ async function speakCurrent() {
   } catch (err) { if (my === token) { stop(); $('now').textContent = 'The voice could not play: ' + (err.message || err) + '.'; } }
 }
 aud.onended = () => {
-  if (!playing || aud.src === SILENT) return;
+  if (!playing || aud.src === SILENT || (ac && vG)) return;
   gapTimer = setTimeout(() => {
     if (repLeft > 1) { repLeft--; aud.currentTime = 0; aud.play(); return; }
     if (cur < spoken.length - 1) { cur++; repLeft = +$('rep').value; speakCurrent(); }
@@ -138,16 +180,83 @@ function unlock() {
 }
 function play(fromHere) {
   if (!spoken.length) openReader(); if (!spoken.length) return;
-  unlock(); playing = true; repLeft = +$('rep').value; setBtn();
+  unlock(); playing = true; repLeft = +$('rep').value; setBtn(); tick();
+  if (ac && vG) return speakCurrent();
   if (fromHere || !lastSrc || aud.ended || aud.src === SILENT) speakCurrent(); else aud.play().catch(() => speakCurrent());
 }
-function stop() { playing = false; token++; clearTimeout(gapTimer); aud.pause(); setBtn(); }
+function stop() { playing = false; token++; clearTimeout(gapTimer); halt(); aud.pause(); setBtn(); }
 $('play').onclick = () => (playing ? stop() : play(false));
 $('prev').onclick = () => { if (!spoken.length) return; cur = Math.max(0, cur - 1); playing ? (repLeft = +$('rep').value, speakCurrent()) : show(); };
 $('next').onclick = () => { if (!spoken.length) return; cur = Math.min(spoken.length - 1, cur + 1); playing ? (repLeft = +$('rep').value, speakCurrent()) : show(); };
 $('more').onclick = () => ($('dset').hidden = !$('dset').hidden);
+
+/* ---------- views: words (captions), waves, bars, circle, timer ---------- */
+const COLS = ['#25DD5F', '#FFB000', '#EB7100', '#E10195'];
+let view = saved.view || 'words', raf = 0, envL = 0;
+function setView(v) {
+  view = v; [...$('viewSw').children].forEach(b => b.classList.toggle('on', b.dataset.v === v));
+  $('lines').hidden = v !== 'words'; $('viz').hidden = v === 'words'; $('vTime').hidden = v !== 'time';
+  if (v === 'words') show(); save(); draw();
+}
+$('viewSw').onclick = e => { const b = e.target.closest('button'); if (b) setView(b.dataset.v); };
+const lerp = (a, b, t) => Math.round(a + (b - a) * t);
+function colAt(t) { t = Math.max(0, Math.min(.999, t)) * (COLS.length - 1); const i = Math.floor(t), f = t - i, h = c => [1, 3, 5].map(k => parseInt(c.slice(k, k + 2), 16)); const [a, b] = [h(COLS[i]), h(COLS[i + 1])]; return `rgb(${lerp(a[0], b[0], f)},${lerp(a[1], b[1], f)},${lerp(a[2], b[2], f)})`; }
+const F = new Uint8Array(128), T = new Uint8Array(256);
+function draw() {
+  cancelAnimationFrame(raf);
+  const cv = $('vizC'), mini = document.body.classList.contains('mini');
+  if ((view === 'words' && !mini) || document.hidden) return;
+  const c = mini ? $('miniC') : cv; if (!c) return;
+  const r = c.getBoundingClientRect(), d = devicePixelRatio || 1, W = c.width = Math.round(r.width * d), H = c.height = Math.round(r.height * d), x = c.getContext('2d');
+  if (an) { an.getByteFrequencyData(F); an.getByteTimeDomainData(T); } else { F.fill(0); T.fill(128); }
+  const band = k => { let m = 0; const a = Math.floor(2 + k * 1.6), b = Math.floor(2 + (k + 1) * 1.6); for (let i = a; i <= b; i++) m = Math.max(m, F[i] || 0); return Math.pow(m / 255, 1.5); };
+  let tot = 0; for (let k = 0; k < 32; k++) tot += band(k); const lvl = tot / 32; envL += (lvl - envL) * (lvl > envL ? .4 : .1);
+  x.clearRect(0, 0, W, H);
+  const style = mini ? 'bars' : view, cx = W / 2, cy = H / 2, M = Math.min(W, H), idle = playing ? 0 : 0.04 + 0.02 * Math.sin(performance.now() / 600);
+  if (style === 'bars' || style === 'time') {
+    const N = mini ? 12 : 28, gap = (mini ? 2 : 4) * d, bw = Math.max(1, Math.min((mini ? 4 : 16) * d, W / (N * 2) - gap));
+    for (let k = 0; k < N; k++) { const h = Math.max(3 * d, (band(k) + idle) * H * (style === 'time' ? .35 : .8)); x.fillStyle = colAt(k / N); x.globalAlpha = style === 'time' ? .55 : 1;
+      [cx + k * (bw + gap) + gap / 2, cx - (k + 1) * (bw + gap) + gap / 2].forEach(px => { x.beginPath(); x.roundRect ? x.roundRect(px, (style === 'time' ? H * .82 : cy) - h / 2, bw, h, bw / 2) : x.rect(px, cy - h / 2, bw, h); x.fill(); }); }
+    x.globalAlpha = 1;
+  } else if (style === 'circle') {
+    const N = 72, r0 = M * .2 + envL * M * .05; x.lineCap = 'round'; x.lineWidth = Math.max(3 * d, 2 * Math.PI * r0 / N * .55);
+    for (let k = 0; k < N; k++) { const a = k / N * Math.PI * 2 - Math.PI / 2, kk = k < N / 2 ? k : N - k, len = (band(kk % 32) + idle) * M * .22 + 3 * d; x.strokeStyle = colAt(kk / (N / 2)); x.beginPath(); x.moveTo(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0); x.lineTo(cx + Math.cos(a) * (r0 + len), cy + Math.sin(a) * (r0 + len)); x.stroke(); }
+  } else { // waves: three soft lines that move with the voice and beat
+    for (let L = 0; L < 3; L++) { x.beginPath(); x.lineWidth = (3 - L) * 1.5 * d; x.strokeStyle = COLS[[0, 1, 3][L]]; x.globalAlpha = 1 - L * .25;
+      for (let i = 0; i <= 64; i++) { const px = i / 64 * W, v = (T[Math.floor(i * 3.9)] - 128) / 128, s = Math.sin(i / 64 * Math.PI); const py = cy + (v * 1.6 + Math.sin(i / 5 + performance.now() / (500 + L * 180)) * (envL + idle) * .9) * H * .38 * s * (1 - L * .2); i ? x.lineTo(px, py) : x.moveTo(px, py); }
+      x.stroke(); } x.globalAlpha = 1;
+  }
+  raf = requestAnimationFrame(draw);
+}
+// listening time (today, on this device) for the Timer view
+const dayKey = () => 'memopad-reader-time-' + new Date().toISOString().slice(0, 10);
+let heard = +localStorage.getItem(dayKey()) || 0, tickT = 0;
+const mmss = s => { s = Math.floor(s); const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60; return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(s % 60).padStart(2, '0'); };
+function tick() {
+  clearInterval(tickT);
+  tickT = setInterval(() => {
+    if (!playing) return; heard++; if (heard % 5 === 0) localStorage.setItem(dayKey(), heard);
+    $('vClock').textContent = mmss(heard); const left = sleepEnd ? Math.max(0, (sleepEnd - Date.now()) / 1000) : 0;
+    $('vSub').textContent = `listened today · line ${cur + 1} of ${spoken.length}` + (sleepEnd ? ` · sleep in ${mmss(left)}` : '');
+    if (sleepEnd && Date.now() >= sleepEnd) sleepNow();
+  }, 1000);
+}
+$('vClock').textContent = mmss(heard);
+// sleep timer: fades the voice and beat out gently, then stops
+let sleepEnd = 0;
+$('sleep').onchange = () => { const m = +$('sleep').value; sleepEnd = m ? Date.now() + m * 60000 : 0; $('now').textContent = m ? `Sleep timer: stopping in ${m} minutes.` : 'Sleep timer off.'; };
+function sleepNow() {
+  sleepEnd = 0; $('sleep').value = '0';
+  if (ac && vG) { const t = ac.currentTime; [vG, bG].forEach(g => { g.gain.cancelScheduledValues(t); g.gain.setValueAtTime(g.gain.value, t); g.gain.linearRampToValueAtTime(0, t + 8); }); }
+  setTimeout(() => { stop(); if (beatOn) beatToggle(); vol(); $('now').textContent = 'Sleep well. Did you get the message?'; }, 8200);
+}
+// minimise: the whole page folds into a slim banner at the top that keeps playing
+function setMini(on) { document.body.classList.toggle('mini', on); $('mini').setAttribute('aria-label', on ? 'Open the full Reader' : 'Minimise to a banner'); $('dset').hidden = true; window.scrollTo(0, 0); draw(); }
+$('mini').onclick = () => setMini(!document.body.classList.contains('mini'));
+document.addEventListener('visibilitychange', () => { if (!document.hidden) draw(); });
+addEventListener('resize', draw);
 $('aVol').oninput = () => { vol(); save(); }; $('mVol').oninput = () => { vol(); save(); };
-$('rate').onchange = () => { aud.playbackRate = isEl() ? 1 : +$('rate').value; prefetch(); save(); };
+$('rate').onchange = () => { aud.playbackRate = isEl() ? 1 : +$('rate').value; prefetch(); save(); if (playing && ac) speakCurrent(); };
 ['rep', 'gap'].forEach(id => ($(id).onchange = save));
 if ('mediaSession' in navigator) {
   const ms = navigator.mediaSession; try { ms.metadata = new MediaMetadata({ title: 'My affirmations', artist: 'MemoPad', artwork: [{ src: '/icon-512.png', sizes: '512x512', type: 'image/png' }] }); } catch {}
@@ -223,3 +332,4 @@ else if (saved.text) { $('text').value = saved.text; openReader(); } else countT
 if (new URLSearchParams(location.search).has('go') && spoken.length) $('now').textContent = 'Ready. Press ▶ to hear your affirmations, and ♪ for a beat.';
 if (saved.yt) $('yt').value = saved.yt;
 if (saved.beat) { beatSrc = saved.beat; const t = beatSrc === 'yt' ? null : $('mpBeats').querySelector(`[data-beat="${beatSrc}"]`); if (t) t.classList.add('on'); }
+setView(['words', 'wave', 'bars', 'circle', 'time'].includes(view) ? view : 'words');

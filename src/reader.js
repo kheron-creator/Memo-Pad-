@@ -302,8 +302,12 @@ async function loadBeat(autoplay) {
     width: '100%', height: '100%', playerVars: { playsinline: 1, rel: 0, modestbranding: 1 },
     events: {
       onReady: () => { ytReady = true; cue(); vol(); },
-      onStateChange: e => { const S = YT.PlayerState; if (e.data === S.PLAYING) beatUi(true); else if (e.data === S.PAUSED) beatUi(false); else if (e.data === S.ENDED) { if (beatOn) { if (curV.list) yt.playVideoAt(0); else { yt.seekTo(0); yt.playVideo(); } } } },
-      onError: () => (beatUi(false), $('now').textContent = 'YouTube would not play that one here. Try another beat or paste a link.'),
+      onStateChange: e => { const S = YT.PlayerState; if (e.data === S.PLAYING) { beatUi(true); if (/YouTube would not play|skipping/.test($('now').textContent)) show(false); } else if (e.data === S.PAUSED) beatUi(false); else if (e.data === S.ENDED) { if (beatOn) { if (curV.list) yt.playVideoAt(0); else { yt.seekTo(0); yt.playVideo(); } } } },
+      onError: () => { // a preset that has ended: quietly move to the next preset; anything else: say so
+        const tiles = [...$('presets').querySelectorAll('button')], k = tiles.findIndex(t => t.dataset.yt === $('yt').value);
+        if (k >= 0 && k < tiles.length - 1 && beatSrc === 'yt') { tilesOff(); tiles[k + 1].classList.add('on'); $('yt').value = tiles[k + 1].dataset.yt; $('now').textContent = 'That YouTube beat has ended, skipping to the next one…'; loadBeat(true); return; }
+        beatUi(false); $('now').textContent = 'YouTube would not play that one here. Try another beat or paste a link.';
+      },
     },
   });
 }

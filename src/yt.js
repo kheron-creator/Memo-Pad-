@@ -1,11 +1,13 @@
 // YouTube helpers shared by Reader and Play over music. YouTube plays in its official embedded player.
-// Preset ids checked with YouTube on 2026-11-07 (all exist and allow embedding). If one ever ends, the player shows an error and you can paste another link.
+// Preset ids checked by playing each one on 2026-11-21 (live radios get new ids when a stream restarts; if one ends, Reader skips to the next) (all exist and allow embedding). If one ever ends, the player shows an error and you can paste another link.
 export const BEATS = [
-  { name: 'Lofi hip hop', sub: 'beats to relax/study', cls: 'm-lofi', url: 'https://www.youtube.com/watch?v=jfKfPfyJRdk' },
-  { name: 'Sleepy lofi', sub: 'beats to sleep/chill', cls: 'm-calm', url: 'https://www.youtube.com/watch?v=28KRPhVzCus' },
+  { name: 'Lofi hip hop', sub: 'beats to relax/study', cls: 'm-lofi', url: 'https://www.youtube.com/watch?v=rFZHOHl-L8A' },
+  { name: 'Sleepy lofi', sub: 'music to sleep/dream', cls: 'm-calm', url: 'https://www.youtube.com/watch?v=VAlMDl00mYY' },
   { name: 'Chillhop', sub: 'warm and jazzy', cls: 'm-chill', url: 'https://www.youtube.com/watch?v=5yx6BWlEVcY' },
+  { name: 'Jazz lofi', sub: 'beats to chill to', cls: 'm-bright', url: 'https://www.youtube.com/watch?v=E2vONfzoyRI' },
+  { name: 'Sad lofi', sub: 'beats for rainy days', cls: 'm-synth', url: 'https://www.youtube.com/watch?v=CwPCy1GLS38' },
   { name: 'Synthwave', sub: 'dreamy, retro', cls: 'm-synth', url: 'https://www.youtube.com/watch?v=4xDzrJKXOOY' },
-  { name: '1 A.M study', sub: 'late-night lofi', cls: 'm-bright', url: 'https://www.youtube.com/watch?v=lTRiuFIWV54' },
+  { name: '1 A.M study', sub: 'late-night lofi, 1 hour', cls: 'm-bright', url: 'https://www.youtube.com/watch?v=lTRiuFIWV54' },
 ];
 export function parseYt(s) {
   try {

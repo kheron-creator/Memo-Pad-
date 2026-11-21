@@ -27,9 +27,9 @@ h1{font-family:var(--head);font-weight:800;font-size:clamp(28px,6vw,40px);line-h
 h2{font-family:var(--head);font-size:18px;font-weight:700;margin:0 0 14px;display:flex;align-items:center;gap:10px}
 h2 b{width:28px;height:28px;border-radius:50%;background:var(--grad);display:grid;place-items:center;font-size:14px}
 .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 12px}
-input[type=text],select,textarea{background:var(--card2);color:#fff;border:1px solid var(--line);border-radius:14px;padding:11px 14px;font:inherit;font-weight:600;outline:none}
+input[type=text],input[type=search],select,textarea{background:var(--card2);color:#fff;border:1px solid var(--line);border-radius:14px;padding:11px 14px;font:inherit;font-weight:600;outline:none}
 input[type=text]:focus,textarea:focus,select:focus{border-color:#666}
-input[type=text]{flex:1;min-width:180px}
+input[type=text],input[type=search]{flex:1;min-width:180px}
 #title{width:100%;margin-bottom:12px}
 textarea{width:100%;resize:vertical;line-height:1.6;font-size:18px;border:0;background:transparent;padding:6px 0}
 button,.btn{font:inherit;font-weight:700;color:#fff;cursor:pointer;text-decoration:none}

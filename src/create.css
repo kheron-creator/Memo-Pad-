@@ -192,7 +192,7 @@ body.mini .dctl{gap:6px}
 body.mini #prev,body.mini #next,body.mini .pos,body.mini #more,body.mini .dset{display:none}
 body.mini .db.big{width:42px;height:42px}
 body.mini .bb.beatBtn span{display:none}
-body.mini #mini svg{transform:rotate(180deg)}
+
 @media (max-width:430px){.dctl .pos{display:none}.dctl{gap:6px}.dctl .bb{padding:0 12px}}
 
 /* Reader player, styled like MemoPad's player: black stage, view switch on top, caption, red progress and controls */
@@ -232,3 +232,6 @@ body.rfull .rp .ybar{padding-bottom:calc(8px + env(safe-area-inset-bottom))}
 body.rfull .rp .lsw{top:calc(10px + env(safe-area-inset-top))}
 .allh{font-family:var(--head);font-size:12px;letter-spacing:1.4px;text-transform:uppercase;color:var(--mute);margin:4px 0 8px}
 .allh+.lines{max-height:34vh}
+body.rfull .rp{animation:rdrop .32s cubic-bezier(.2,.8,.2,1)}
+@keyframes rdrop{from{transform:translateY(-100%)}to{transform:none}}
+#mini.open svg{transform:rotate(180deg)}

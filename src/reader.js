@@ -208,7 +208,7 @@ function setView(v) {
 $('viewSw').onclick = e => { const b = e.target.closest('button'); if (!b) return; if (b.dataset.v === 'lofi' && view === 'lofi') { lofiScene = LOFI[(LOFI.indexOf(lofiScene) + 1) % LOFI.length]; } setView(b.dataset.v); };
 $('rPlay').onclick = () => $('play').click(); $('rPrev').onclick = () => $('prev').click(); $('rNext').onclick = () => $('next').click();
 $('rBar').onclick = e => { if (!spoken.length) return; const r = $('rBar').getBoundingClientRect(); cur = Math.max(0, Math.min(spoken.length - 1, Math.floor((e.clientX - r.left) / r.width * spoken.length))); playing ? (repLeft = +$('rep').value, speakCurrent()) : show(); };
-function setFull(on) { document.body.classList.toggle('rfull', on); $('rFull').setAttribute('aria-label', on ? 'Exit full screen' : 'Full screen'); setTimeout(draw, 50); }
+function setFull(on) { if (on && !items.length) { $('now').textContent = 'Add your affirmations first, then the captions open here.'; return; } if (on && document.body.classList.contains('mini')) setMini(false); document.body.classList.toggle('rfull', on); $('mini').classList.toggle('open', on); $('rFull').setAttribute('aria-label', on ? 'Exit full screen' : 'Full screen'); setTimeout(draw, 50); }
 $('rFull').onclick = () => setFull(!document.body.classList.contains('rfull'));
 addEventListener('keydown', e => { if (e.key === 'Escape' && document.body.classList.contains('rfull')) setFull(false); });
 const lerp = (a, b, t) => Math.round(a + (b - a) * t);
@@ -273,8 +273,10 @@ function sleepNow() {
   setTimeout(() => { stop(); if (beatOn) beatToggle(); vol(); $('now').textContent = 'Sleep well. Did you get the message?'; }, 8200);
 }
 // minimise: the whole page folds into a slim banner at the top that keeps playing
-function setMini(on) { document.body.classList.toggle('mini', on); $('mini').setAttribute('aria-label', on ? 'Open the full Reader' : 'Minimise to a banner'); $('dset').hidden = true; window.scrollTo(0, 0); draw(); }
-$('mini').onclick = () => setMini(!document.body.classList.contains('mini'));
+function setMini(on) { document.body.classList.toggle('mini', on);  $('dset').hidden = true; window.scrollTo(0, 0); draw(); }
+// the dropdown button opens the captions player (MemoPad style); the player's own button minimises to a banner
+$('mini').onclick = () => setFull(!document.body.classList.contains('rfull'));
+$('rMini').onclick = () => { setFull(false); setMini(true); };
 document.addEventListener('visibilitychange', () => { if (!document.hidden) draw(); });
 addEventListener('resize', draw);
 $('aVol').oninput = () => { vol(); save(); }; $('mVol').oninput = () => { vol(); save(); };

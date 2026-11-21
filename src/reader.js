@@ -7,7 +7,8 @@ import { speakBlob } from './tts.js';
 import { parseYt, loadYtApi, beatTiles } from './yt.js';
 import { mpTiles } from './beats.js';
 import { docxText } from './docx.js';
-import { audioGet, audioPut } from './cloud.js';
+import { audioGet, audioPut, supabase } from './cloud.js';
+import { dayOf, pushDays, otherDays } from './listentime.js';
 const $ = id => document.getElementById(id);
 const MAX = 1000, AHEAD = 3, LS = 'memopad-reader';
 const aud = $('aud'), bAud = $('bAud');
@@ -228,20 +229,29 @@ function draw() {
   }
   raf = requestAnimationFrame(draw);
 }
-// listening time (today, on this device) for the Timer view
-const dayKey = () => 'memopad-reader-time-' + new Date().toISOString().slice(0, 10);
-let heard = +localStorage.getItem(dayKey()) || 0, tickT = 0;
+// listening time today for the Timer view: this device's count plus your other devices' (when signed in)
+const dayKey = () => 'memopad-reader-time-' + dayOf();
+let heard = +localStorage.getItem(dayKey()) || 0, tickT = 0, elsewhere = 0, uid = null, pushedAt = 0, heardDay = dayOf();
+const shown = () => heard + elsewhere;
+async function syncTime() {
+  if (!uid) return; await pushDays(uid, 'reader', { [heardDay]: heard });
+  const o = await otherDays(uid, 'reader'); if (o) { elsewhere = o[dayOf()] || 0; $('vClock').textContent = mmss(shown()); }
+}
+const pushNow = () => { if (uid) { pushedAt = Date.now(); localStorage.setItem(dayKey(), heard); pushDays(uid, 'reader', { [heardDay]: heard }); } };
+supabase?.auth.getSession().then(({ data }) => { uid = data?.session?.user?.id || null; syncTime(); }).catch(() => {});
+addEventListener('pagehide', pushNow);
+document.addEventListener('visibilitychange', () => { if (document.hidden) pushNow(); else syncTime(); });
 const mmss = s => { s = Math.floor(s); const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60; return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(s % 60).padStart(2, '0'); };
 function tick() {
   clearInterval(tickT);
   tickT = setInterval(() => {
-    if (!playing) return; heard++; if (heard % 5 === 0) localStorage.setItem(dayKey(), heard);
-    $('vClock').textContent = mmss(heard); const left = sleepEnd ? Math.max(0, (sleepEnd - Date.now()) / 1000) : 0;
+    if (!playing) return; if (dayOf() !== heardDay) { if (uid) pushDays(uid, 'reader', { [heardDay]: heard }); heardDay = dayOf(); heard = +localStorage.getItem(dayKey()) || 0; elsewhere = 0; } heard++; if (heard % 5 === 0) localStorage.setItem(dayKey(), heard); if (Date.now() - pushedAt > 30000) pushNow();
+    $('vClock').textContent = mmss(shown()); const left = sleepEnd ? Math.max(0, (sleepEnd - Date.now()) / 1000) : 0;
     $('vSub').textContent = `listened today · line ${cur + 1} of ${spoken.length}` + (sleepEnd ? ` · sleep in ${mmss(left)}` : '');
     if (sleepEnd && Date.now() >= sleepEnd) sleepNow();
   }, 1000);
 }
-$('vClock').textContent = mmss(heard);
+$('vClock').textContent = mmss(shown());
 // sleep timer: fades the voice and beat out gently, then stops
 let sleepEnd = 0;
 $('sleep').onchange = () => { const m = +$('sleep').value; sleepEnd = m ? Date.now() + m * 60000 : 0; $('now').textContent = m ? `Sleep timer: stopping in ${m} minutes.` : 'Sleep timer off.'; };

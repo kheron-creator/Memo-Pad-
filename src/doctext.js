@@ -66,3 +66,44 @@ export async function readDoc(f) {
   if (!t) throw new Error('no words found in that file. If it is a scanned PDF, copy the text and paste it in instead');
   return t;
 }
+
+/* ---------- book-style intro, then one affirmation per line ----------
+   Like ElevenReader: a document that opens with prose (an introduction, a story, a chapter opening)
+   is read as flowing paragraphs, sentence by sentence, said once. The lines that follow are
+   affirmations, one per line, and these are the ones that repeat. */
+const sentencesIn = t => (t.match(/[^.!?…]+(?:[.!?…]+["'”’)\]]*|$)/g) || [t]).map(s => s.trim()).filter(Boolean);
+const isLong = t => t.length > 180 || (t.length > 90 && sentencesIn(t).filter(s => s.length > 12).length >= 3);
+const isShort = t => t.length <= 140 && sentencesIn(t).length <= 2;
+export function splitSentences(t) {
+  const out = [];
+  for (const s of t.split(/(?<=[.!?…]["'”’)\]]*)\s+(?=["'“‘(\[]?[A-Z0-9])/)) {
+    // keep tiny pieces ("Mr.", "Ps. 23:1.") with the sentence that follows
+    const last = out[out.length - 1];
+    if (last && (last.length < 12 || /\b(?:Mr|Mrs|Ms|Dr|St|Ps|Rev|Prov|Gen|Matt|Rom|vs|etc|e\.g|i\.e)\.$/i.test(last))) out[out.length - 1] += ' ' + s; else out.push(s);
+  }
+  return out.map(s => s.trim()).filter(Boolean);
+}
+// lines: from splitLines. Returns [{head:true,text}] or [{text, intro:true, para, end}] or [{text}]
+export function structure(lines) {
+  const L = lines.map(t => ({ t, head: /^#+\s*/.test(t) }));
+  const runAt = i => { let n = 0; for (let k = i; k < L.length && !L[k].head && isShort(L[k].t); k++) n++; return n; };
+  const prose = new Set();
+  // the opening, up to the first run of three or more short lines, is the intro if it holds real prose
+  let s = L.findIndex((x, i) => !x.head && runAt(i) >= 3);
+  if (s > 0) { const pre = L.slice(0, s).map((x, i) => i).filter(i => !L[i].head); if (pre.some(i => isLong(L[i].t))) pre.forEach(i => prose.add(i)); }
+  // a later chapter can open with prose too, before its own run of affirmations
+  if (s >= 0) for (let h = s; h < L.length; h++) {
+    if (!L[h].head) continue;
+    let k = h + 1; const lead = [];
+    while (k < L.length && !L[k].head && isLong(L[k].t)) lead.push(k++);
+    if (lead.length && runAt(k) >= 3) lead.forEach(i => prose.add(i));
+  }
+  const out = []; let para = 0;
+  L.forEach((x, i) => {
+    const text = x.head ? x.t.replace(/^#+\s*/, '') : x.t;
+    if (x.head) out.push({ head: true, text });
+    else if (prose.has(i)) { const ss = splitSentences(text); para++; ss.forEach((t, j) => out.push({ text: t, intro: true, para, end: j === ss.length - 1 })); }
+    else out.push({ text });
+  });
+  return out;
+}

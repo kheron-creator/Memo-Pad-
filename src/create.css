@@ -285,3 +285,8 @@ body.sheeton{overflow:hidden}
 [data-art=jazz] .cv{background:radial-gradient(circle at 50% 45%,#c9a24a88,#0000 40%),linear-gradient(135deg,#2b2a1a,#151510)}
 [data-art=synthwave] .cv{background:linear-gradient(#0000 58%,#0000 58%),repeating-linear-gradient(90deg,#d4609b33 0 1px,#0000 1px 8px) bottom/100% 40% no-repeat,radial-gradient(circle at 50% 62%,#e88a5a 0 22%,#0000 23%),linear-gradient(#2a1a3a,#4a2346)}
 [data-art=night] .cv{background:radial-gradient(circle at 20% 30%,#fff8 0 1px,#0000 2px),radial-gradient(circle at 70% 20%,#fff6 0 1px,#0000 2px),radial-gradient(circle at 55% 65%,#fff5 0 1px,#0000 2px),linear-gradient(#141a2e,#0b0e18)}
+/* book-style intro: flowing paragraphs, each sentence lights as it is read */
+.lines p.para{font-weight:400;font-size:17px;line-height:1.65;color:#8a8a90;padding:10px 0 14px;cursor:default}
+.lines p.para span{cursor:pointer;transition:color .2s}
+.lines p.para span:hover{color:#b8b8bd}
+.lines p.para span.now{color:#fff;font-weight:inherit;font-size:inherit;white-space:normal;overflow:visible;margin:0}

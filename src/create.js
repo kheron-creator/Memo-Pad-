@@ -6,7 +6,7 @@ import { audioPut, supabase, BUCKET, TABLE, trackToRow } from './cloud.js';
 import { VOICES, orb } from './voices.js';
 import { speakBlob, elevenReason } from './tts.js';
 import { addMic } from './dictate.js';
-import { readDoc, DOC_ACCEPT, splitLines } from './doctext.js';
+import { readDoc, DOC_ACCEPT, splitLines, structure } from './doctext.js';
 const $ = id => document.getElementById(id);
 const SR = 44100;
 let vMode = 'ai', mMode = 'calm', recBlob = null, voiceFileBlob = null, musicFileBuf = null, aiBuf = null, busy = false, outUrl = null, last = null;
@@ -112,11 +112,15 @@ async function writeForMe() {
 }
 // chapter headings (# Title) are spoken as plain lines here; the Reader shows them as headings
 const lines = () => splitLines($('text').value).map(s => s.replace(/^#+\s*/, '').trim()).filter(Boolean);
+// a book-style intro is said once as flowing sentences; the affirmations after it repeat
+const parts = () => structure(splitLines($('text').value)).filter(x => !x.head && x.text.trim());
 const fmt = s => { s = Math.round(s); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 function updateCount() {
-  const L = lines(); if (!L.length) { $('count').textContent = ''; return; }
-  const words = L.join(' ').split(/\s+/).length, rep = +$('rep').value, gap = +$('gap').value;
-  $('count').textContent = `${L.length} line${L.length > 1 ? 's' : ''} · about ${fmt(10 + rep * (words / 2.6 + L.length * gap))} with the AI voice`;
+  const P = parts(); if (!P.length) { $('count').textContent = ''; return; }
+  const rep = +$('rep').value, gap = +$('gap').value, A = P.filter(x => !x.intro), I = P.filter(x => x.intro);
+  const w = a => a.map(x => x.text).join(' ').split(/\s+/).filter(Boolean).length;
+  const secs = 10 + rep * (w(A) / 2.6 + A.length * gap) + w(I) / 2.6 + I.length * 0.3;
+  $('count').textContent = (I.length ? 'Intro read like a book, then ' : '') + `${A.length} affirmation${A.length === 1 ? '' : 's'} · about ${fmt(secs)} with the AI voice`;
 }
 
 /* ---------- 2. Voice ---------- */
@@ -265,13 +269,16 @@ $('make').onclick = async () => {
     const lead = 4, tail = 6, place = [], said = []; let t = lead;
     if (vMode === 'ai') {
       const rep = +$('rep').value, gap = +$('gap').value, v = $('voice').value;
-      for (let i = 0; i < L.length; i++) {
-        msg(`Speaking line ${i + 1} of ${L.length}…`);
-        const b = await speak(L[i], v, p => msg(`Downloading the voice (first time only)… ${Math.round(p * 100)}%`), { prev: L[i - 1] || '', next: L[i + 1] || '' });
-        for (let r = 0; r < rep; r++) { place.push([b, t]); said.push([L[i], t, t + b.duration]); t += b.duration + gap; }
-        prog(0.02 + 0.6 * (i + 1) / L.length);
+      const P = parts(); let g = gap;
+      for (let i = 0; i < P.length; i++) {
+        const x = P[i], nx = P[i + 1];
+        msg(`Speaking line ${i + 1} of ${P.length}…`);
+        const b = await speak(x.text, v, p => msg(`Downloading the voice (first time only)… ${Math.round(p * 100)}%`), { prev: P[i - 1]?.text || '', next: nx?.text || '' });
+        g = x.intro ? (nx?.intro ? (x.end ? 0.7 : 0.18) : 1.2) : gap;
+        for (let r = 0; r < (x.intro ? 1 : rep); r++) { place.push([b, t]); said.push([x.text, t, t + b.duration]); t += b.duration + g; }
+        prog(0.02 + 0.6 * (i + 1) / P.length);
       }
-      t -= gap;
+      t -= g;
     } else { msg('Reading your recording…'); const b = await decode(vMode === 'rec' ? recBlob : voiceFileBlob); place.push([b, t]); t += b.duration; prog(0.6); }
     const dur = t + tail; msg('Mixing voice over music…');
     const ctx = new OfflineAudioContext(2, Math.ceil(dur * SR), SR);

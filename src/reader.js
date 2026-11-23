@@ -7,7 +7,7 @@ import { speakBlob } from './tts.js';
 import { parseYt, loadYtApi, beatTiles } from './yt.js';
 import { mpTiles } from './beats.js';
 import { LOFI_DRAW } from './lofi.js';
-import { readDoc, DOC_ACCEPT, splitLines } from './doctext.js';
+import { readDoc, DOC_ACCEPT, splitLines, structure } from './doctext.js';
 import { audioGet, audioPut, supabase } from './cloud.js';
 import { dayOf, pushDays, otherDays } from './listentime.js';
 const $ = id => document.getElementById(id);
@@ -33,12 +33,25 @@ $('vRow').onclick = e => { const b = e.target.closest('.vchip'); if (!b) return;
 const clean = s => s.replace(/^\s*(?:[-*•·]|\d+[.)])\s+/, '').trim();
 function parse(text) {
   const out = []; let n = 0;
-  for (const t of splitLines(text)) {
-    if (/^#+\s*/.test(t)) { out.push({ head: true, text: t.replace(/^#+\s*/, '') }); continue; }
-    const c = clean(t); if (!c) continue;
-    if (n >= MAX) break; out.push({ text: c.slice(0, 2500) }); n++;
+  for (const x of structure(splitLines(text))) {
+    if (x.head) { out.push(x); continue; }
+    const c = x.intro ? x.text : clean(x.text); if (!c) continue;
+    if (n >= MAX) break; out.push({ ...x, text: c.slice(0, 2500) }); n++;
   }
   return out;
+}
+// the intro is read once, like a book: a short breath between sentences, a longer one between paragraphs
+const repFor = k => items[spoken[k]]?.intro ? 1 : +$('rep').value;
+const gapAfter = k => { const it = items[spoken[k]], nx = items[spoken[k + 1]]; return it?.intro && nx?.intro ? (it.end ? 0.7 : 0.18) : it?.intro ? 1.2 : +$('gap').value; };
+function linesHtml() {
+  let h = '';
+  for (let i = 0; i < items.length; i++) {
+    const x = items[i];
+    if (x.head) h += `<h3>${esc(x.text)}</h3>`;
+    else if (x.intro) { let p = ''; while (i < items.length && items[i].intro && items[i].para === x.para) { p += `<span data-i="${i}">${esc(items[i].text)}</span> `; i++; } i--; h += `<p class="para">${p.trim()}</p>`; }
+    else h += `<p data-i="${i}">${esc(x.text)}</p>`;
+  }
+  return h;
 }
 function countText() {
   const n = parse($('text').value).filter(x => !x.head).length;
@@ -49,7 +62,7 @@ function openReader() {
   if (!spoken.length) { $('now').textContent = 'Add some affirmations first.'; return; }
   docKey = String(items.length) + ':' + items.slice(0, 3).map(x => x.text).join('|').slice(0, 80);
   cur = Math.min(saved.pos?.[docKey] || 0, spoken.length - 1);
-  $('lines').innerHTML = items.map((x, i) => x.head ? `<h3>${esc(x.text)}</h3>` : `<p data-i="${i}">${esc(x.text)}</p>`).join('');
+  $('lines').innerHTML = linesHtml();
   $('editBox').hidden = true; $('readBox').hidden = false; countText(); show(false); save(); placeSettings(true);
 }
 const esc = s => s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
@@ -80,7 +93,7 @@ function openFiles(files, keep = true) {
   $('editBox').hidden = true; $('readBox').hidden = false; $('cnt').textContent = `${files.length} audio`; show(false); placeSettings(true);
   $('now').textContent = `${files.length} recording${files.length > 1 ? 's' : ''} ready. Pick a beat and press play.`;
 }
-$('lines').onclick = e => { const p = e.target.closest('p[data-i]'); if (!p) return; cur = spoken.indexOf(+p.dataset.i); play(true); };
+$('lines').onclick = e => { const p = e.target.closest('[data-i]'); if (!p) return; cur = spoken.indexOf(+p.dataset.i); play(true); };
 
 /* ---------- playback ---------- */
 // Phones ignore an audio player's own volume, so the voice and the MemoPad beat each go through a Web Audio
@@ -113,8 +126,8 @@ function glow() {
   if (playing && p < 1.05) glowRaf = requestAnimationFrame(glow);
 }
 function show(scroll = true) {
-  const i = spoken[cur]; document.querySelectorAll('#lines p.now').forEach(p => p.classList.remove('now'));
-  const p = document.querySelector(`#lines p[data-i="${i}"]`); if (p) { p.classList.add('now'); if (scroll) { const box = $('lines'); box.scrollTo({ top: p.offsetTop - box.clientHeight / 2 + p.clientHeight / 2, behavior: 'smooth' }); } }
+  const i = spoken[cur]; document.querySelectorAll('#lines .now').forEach(p => p.classList.remove('now'));
+  const p = document.querySelector(`#lines [data-i="${i}"]`); if (p) { p.classList.add('now'); if (scroll) { const box = $('lines'); box.scrollTo({ top: p.offsetTop - box.clientHeight / 2 + p.clientHeight / 2, behavior: 'smooth' }); } }
   $('pos').textContent = `${cur + 1} / ${spoken.length}`;
   $('now').textContent = items[i]?.text || '';
   const vc = $('vCap'); if (vc && vc.dataset.i !== String(i)) {
@@ -165,14 +178,14 @@ function plan(k, rep, at, my) {
     src.connect(g).connect(vG); src.start(at); src.stop(at + dur + 0.05); live.push(src); src.onended = () => (live = live.filter(x => x !== src));
     later(() => { if (my === token) { cur = k; repLeft = rep; show(); save(); lineT = { at, dur }; glowWords.forEach(w => w.className = 'rw'); $('vCap').classList.remove('lit'); glow(); } }, at - now);
     let nk = k, nrep = rep - 1;
-    if (nrep < 1) { nk = k + 1; nrep = +$('rep').value; if (nk >= spoken.length) { if ($('loopAll').checked) nk = 0; else { later(() => { if (my === token) { stop(); $('now').textContent = 'Finished. Did you get the message?'; } }, at + dur - now); return; } } }
+    if (nrep < 1) { nk = k + 1; nrep = repFor(nk); if (nk >= spoken.length) { if ($('loopAll').checked) nk = 0; else { later(() => { if (my === token) { stop(); $('now').textContent = 'Finished. Did you get the message?'; } }, at + dur - now); return; } } }
     // line up the next one as soon as this one starts, so it is ready (and already scheduled) before this ends
-    later(() => { if (my === token) { plan(nk, nrep, at + dur + +$('gap').value, my); for (let x = 1; x <= AHEAD; x++) { const j = spoken[nk + x]; if (j != null) bufFor(j).catch(() => {}); } } }, at - now);
+    later(() => { if (my === token) { plan(nk, nrep, at + dur + gapAfter(k), my); for (let x = 1; x <= AHEAD; x++) { const j = spoken[nk + x]; if (j != null) bufFor(j).catch(() => {}); } } }, at - now);
   }).catch(err => { if (my === token) { stop(); $('now').textContent = 'The voice could not play: ' + (err.message || err) + '.'; } });
 }
 async function speakCurrent() {
   const my = ++token; clearTimeout(gapTimer); halt(); show();
-  if (ac && vG) { aud.pause(); plan(cur, repLeft || +$('rep').value, ac.currentTime, my); return; }
+  if (ac && vG) { aud.pause(); plan(cur, repLeft || repFor(cur), ac.currentTime, my); return; }
   const line = items[spoken[cur]];
   try {
     const blob = line.file || await speakBlob(line.text, voice, p => ($('now').textContent = `Downloading the free voice… ${Math.round(p * 100)}%`), elSpeed(), ctxOf(spoken[cur]));
@@ -185,10 +198,10 @@ aud.onended = () => {
   if (!playing || aud.src === SILENT || (ac && vG)) return;
   gapTimer = setTimeout(() => {
     if (repLeft > 1) { repLeft--; aud.currentTime = 0; aud.play(); return; }
-    if (cur < spoken.length - 1) { cur++; repLeft = +$('rep').value; speakCurrent(); }
-    else if ($('loopAll').checked) { cur = 0; repLeft = +$('rep').value; speakCurrent(); }
+    if (cur < spoken.length - 1) { cur++; repLeft = repFor(cur); speakCurrent(); }
+    else if ($('loopAll').checked) { cur = 0; repLeft = repFor(0); speakCurrent(); }
     else { stop(); $('now').textContent = 'Finished. Did you get the message?'; }
-  }, +$('gap').value * 1000);
+  }, gapAfter(cur) * 1000);
 };
 function setBtn() { document.body.classList.toggle('playing', playing); $('rp').classList.toggle('playing', playing); if (!playing) { $('vCap').classList.add('lit'); lineT = null; } }
 // iPhones only let sound start straight from a tap, so we start everything synchronously here
@@ -203,14 +216,14 @@ function unlock() {
 }
 function play(fromHere) {
   if (!spoken.length) openReader(); if (!spoken.length) return;
-  unlock(); playing = true; repLeft = +$('rep').value; setBtn(); tick();
+  unlock(); playing = true; repLeft = repFor(cur); setBtn(); tick();
   if (ac && vG) return speakCurrent();
   if (fromHere || !lastSrc || aud.ended || aud.src === SILENT) speakCurrent(); else aud.play().catch(() => speakCurrent());
 }
 function stop() { playing = false; token++; clearTimeout(gapTimer); halt(); aud.pause(); setBtn(); }
 $('play').onclick = () => (playing ? stop() : play(false));
-$('prev').onclick = () => { if (!spoken.length) return; cur = Math.max(0, cur - 1); playing ? (repLeft = +$('rep').value, speakCurrent()) : show(); };
-$('next').onclick = () => { if (!spoken.length) return; cur = Math.min(spoken.length - 1, cur + 1); playing ? (repLeft = +$('rep').value, speakCurrent()) : show(); };
+$('prev').onclick = () => { if (!spoken.length) return; cur = Math.max(0, cur - 1); playing ? (repLeft = repFor(cur), speakCurrent()) : show(); };
+$('next').onclick = () => { if (!spoken.length) return; cur = Math.min(spoken.length - 1, cur + 1); playing ? (repLeft = repFor(cur), speakCurrent()) : show(); };
 // one settings sheet for voice, beat and speed once your affirmations are loaded, so the page is just the player
 function placeSettings(ready) {
   document.body.classList.toggle('ready', ready);
@@ -236,7 +249,7 @@ function setView(v) {
 // Lofi: press it again for the next rainy scene, like in MemoPad
 $('viewSw').onclick = e => { const b = e.target.closest('button'); if (!b) return; if (b.dataset.v === 'lofi' && view === 'lofi') { lofiScene = LOFI[(LOFI.indexOf(lofiScene) + 1) % LOFI.length]; } setView(b.dataset.v); };
 $('rPlay').onclick = () => $('play').click(); $('rPrev').onclick = () => $('prev').click(); $('rNext').onclick = () => $('next').click();
-$('rBar').onclick = e => { if (!spoken.length) return; const r = $('rBar').getBoundingClientRect(); cur = Math.max(0, Math.min(spoken.length - 1, Math.floor((e.clientX - r.left) / r.width * spoken.length))); playing ? (repLeft = +$('rep').value, speakCurrent()) : show(); };
+$('rBar').onclick = e => { if (!spoken.length) return; const r = $('rBar').getBoundingClientRect(); cur = Math.max(0, Math.min(spoken.length - 1, Math.floor((e.clientX - r.left) / r.width * spoken.length))); playing ? (repLeft = repFor(cur), speakCurrent()) : show(); };
 function setFull(on) { if (on && !items.length) { $('now').textContent = 'Add your affirmations first, then the captions open here.'; return; } if (on && document.body.classList.contains('mini')) setMini(false); document.body.classList.toggle('rfull', on); $('mini').classList.toggle('open', on); $('rFull').setAttribute('aria-label', on ? 'Exit full screen' : 'Full screen'); setTimeout(draw, 50); }
 $('rFull').onclick = () => setFull(!document.body.classList.contains('rfull'));
 addEventListener('keydown', e => { if (e.key === 'Escape' && document.body.classList.contains('rfull')) setFull(false); });

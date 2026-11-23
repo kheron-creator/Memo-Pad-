@@ -7,7 +7,7 @@ import { speakBlob } from './tts.js';
 import { parseYt, loadYtApi, beatTiles } from './yt.js';
 import { mpTiles } from './beats.js';
 import { LOFI_DRAW } from './lofi.js';
-import { docxText } from './docx.js';
+import { readDoc, DOC_ACCEPT } from './doctext.js';
 import { audioGet, audioPut, supabase } from './cloud.js';
 import { dayOf, pushDays, otherDays } from './listentime.js';
 const $ = id => document.getElementById(id);
@@ -57,12 +57,14 @@ const esc = s => s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&g
 $('text').oninput = countText;
 $('load').onclick = openReader;
 $('edit').onclick = () => { stop(); localStorage.removeItem(LS + '-files'); $('readBox').hidden = true; $('editBox').hidden = false; placeSettings(false); };
+$('file').accept = DOC_ACCEPT + ',audio/*';
 $('file').onchange = async e => {
   const files = [...e.target.files]; const f = files[0]; if (!f) return;
   const audio = files.filter(x => x.type.startsWith('audio/') || /\.(mp3|m4a|wav|aac|ogg)$/i.test(x.name));
   if (audio.length) { audio.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })); openFiles(audio); e.target.value = ''; return; }
-  try { $('text').value = /\.docx$/i.test(f.name) ? await docxText(f) : await f.text(); countText(); openReader(); }
-  catch (err) { $('now').textContent = 'Could not read that file: ' + (err.message || err) + '. Try a .txt file, or paste the text.'; }
+  $('upInfo').textContent = 'Reading ' + f.name + '…';
+  try { $('text').value = await readDoc(f); $('upInfo').textContent = ''; countText(); openReader(); }
+  catch (err) { const m = 'Could not read that file: ' + (err.message || err) + '.'; $('upInfo').textContent = m; $('now').textContent = m; }
   e.target.value = '';
 };
 function openFiles(files, keep = true) {

@@ -32,9 +32,10 @@
     <div id="editBox">
       <textarea id="text" rows="8" placeholder="Paste your affirmations here, one per line. Lines starting with # become section titles. Already made your affirmations as audio (e.g. in ElevenLabs)? Upload the MP3s instead."></textarea>
       <div class="row">
-        <label class="ghost btn"><input id="file" type="file" accept=".txt,.md,.docx,text/plain,audio/*" multiple hidden>Upload text, Word or audio</label>
+        <label class="ghost btn"><input id="file" type="file" multiple hidden>Upload Word, PDF, text or audio</label>
         <button id="load" class="ghost grad-text">Ready to read ✓</button>
       </div>
+      <p class="hint" id="upInfo" role="status"></p>
     </div>
     <div id="readBox" hidden>
       <div class="rp" id="rp">

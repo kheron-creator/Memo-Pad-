@@ -181,7 +181,16 @@ async function refreshStorage() {
 $('drop').onclick = e => { if (e.target.id !== 'chooseBtn') $('file').click(); };
 $('chooseBtn').onclick = $('browse').onclick = () => $('file').click();
 $('libSearchBtn').onclick = () => { const w = $('libSearch'); w.hidden = !w.hidden; if (!w.hidden) $('libq').focus(); else if ($('libq').value) { $('libq').value = ''; renderLib(); } };
-$('file').onchange = e => { queueFiles([...e.target.files]); e.target.value = ''; };
+// a document of affirmations (Word, PDF, text) goes to Create, where it becomes a voice track
+const isDoc = f => /\.(docx|pdf|rtf|txt|md|markdown|html?|pages|doc|odt)$/i.test(f.name) || /^(text\/|application\/(pdf|rtf|vnd\.openxml))/.test(f.type);
+$('file').onchange = async e => {
+  const all = [...e.target.files], docs = all.filter(isDoc), media = all.filter(f => !isDoc(f)); e.target.value = '';
+  if (media.length) queueFiles(media);
+  if (docs.length) {
+    try { const { readDoc } = await import('./doctext.js'); sessionStorage.setItem('mp.doc', JSON.stringify({ name: docs[0].name, text: await readDoc(docs[0]) })); location.href = '/create.html'; }
+    catch (err) { toast('Could not read ' + docs[0].name + ': ' + (err.message || err) + '.', true); }
+  }
+};
 let dragN = 0;
 addEventListener('dragenter', e => { e.preventDefault(); dragN++; document.body.classList.add('dragging'); $('drop').classList.add('over'); });
 addEventListener('dragleave', e => { e.preventDefault(); if (--dragN <= 0) { dragN = 0; document.body.classList.remove('dragging'); $('drop').classList.remove('over'); } });

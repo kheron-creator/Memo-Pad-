@@ -6,6 +6,7 @@ import { audioPut, supabase, BUCKET, TABLE, trackToRow } from './cloud.js';
 import { VOICES, orb } from './voices.js';
 import { speakBlob, elevenReason } from './tts.js';
 import { addMic } from './dictate.js';
+import { readDoc, DOC_ACCEPT } from './doctext.js';
 const $ = id => document.getElementById(id);
 const SR = 44100;
 let vMode = 'ai', mMode = 'calm', recBlob = null, voiceFileBlob = null, musicFileBuf = null, aiBuf = null, busy = false, outUrl = null, last = null;
@@ -294,6 +295,15 @@ $('make').onclick = async () => {
 
 $('write').onclick = writeForMe;
 ['goal', 'why', 'include', 'who', 'text'].forEach(id => addMic($(id)));
+// upload a document of affirmations (Word, PDF, RTF or text): one line each, ready to make into a track
+$('docFile').accept = DOC_ACCEPT;
+$('docFile').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return; $('docInfo').textContent = 'Reading ' + f.name + '…';
+  try { const t = await readDoc(f); $('text').value = t; updateCount(); $('docInfo').textContent = `Added ${t.split('\n').length} lines from ${f.name}.`; $('text').scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+  catch (err) { $('docInfo').textContent = 'Could not read that file: ' + (err.message || err) + '.'; }
+  e.target.value = '';
+};
+try { const d = JSON.parse(sessionStorage.getItem('mp.doc') || 'null'); if (d && d.text) { sessionStorage.removeItem('mp.doc'); $('text').value = d.text; updateCount(); $('docInfo').textContent = `Added ${d.text.split('\n').length} lines from ${d.name}. Pick a voice and make your track.`; } } catch {}
 $('text').oninput = updateCount; $('rep').onchange = updateCount; $('gap').onchange = updateCount;
 $('goal').onkeydown = e => { if (e.key === 'Enter') writeForMe(); };
 

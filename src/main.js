@@ -7,6 +7,7 @@ import { transcriptChapters } from './chapters.js';
 import { parseScript, alignToAsr, spreadOverVoice, scriptChapters } from './script.js';
 import { displayStarts } from './sync.js';
 import { LOFI_DRAW } from './lofi.js';
+import { pushDays, otherDays } from './listentime.js';
 
 const $ = id => document.getElementById(id);
 const audio = $('audio');
@@ -109,7 +110,7 @@ async function start(u) {
   renderCats(); renderLib(); if (!openDeep()) { if (tracks[0]) select(tracks[0]); else showEmpty(); }
   requestAnimationFrame(loop);
   await refresh();
-  syncListens();
+  syncListens(); syncTime(true);
   importSharedPlaylist();
   if (sessionStorage.getItem('mp.deep') && !openDeep()) { sessionStorage.removeItem('mp.deep'); toast('That memo is not shared with you, or it was removed.', true); }
   refreshStorage();
@@ -180,7 +181,16 @@ async function refreshStorage() {
 $('drop').onclick = e => { if (e.target.id !== 'chooseBtn') $('file').click(); };
 $('chooseBtn').onclick = $('browse').onclick = () => $('file').click();
 $('libSearchBtn').onclick = () => { const w = $('libSearch'); w.hidden = !w.hidden; if (!w.hidden) $('libq').focus(); else if ($('libq').value) { $('libq').value = ''; renderLib(); } };
-$('file').onchange = e => { queueFiles([...e.target.files]); e.target.value = ''; };
+// a document of affirmations (Word, PDF, text) goes to Create, where it becomes a voice track
+const isDoc = f => /\.(docx|pdf|rtf|txt|md|markdown|html?|pages|doc|odt)$/i.test(f.name) || /^(text\/|application\/(pdf|rtf|vnd\.openxml))/.test(f.type);
+$('file').onchange = async e => {
+  const all = [...e.target.files], docs = all.filter(isDoc), media = all.filter(f => !isDoc(f)); e.target.value = '';
+  if (media.length) queueFiles(media);
+  if (docs.length) {
+    try { const { readDoc } = await import('./doctext.js'); sessionStorage.setItem('mp.doc', JSON.stringify({ name: docs[0].name, text: await readDoc(docs[0]) })); location.href = '/create.html'; }
+    catch (err) { toast('Could not read ' + docs[0].name + ': ' + (err.message || err) + '.', true); }
+  }
+};
 let dragN = 0;
 addEventListener('dragenter', e => { e.preventDefault(); dragN++; document.body.classList.add('dragging'); $('drop').classList.add('over'); });
 addEventListener('dragleave', e => { e.preventDefault(); if (--dragN <= 0) { dragN = 0; document.body.classList.remove('dragging'); $('drop').classList.remove('over'); } });
@@ -794,7 +804,7 @@ const BANDS = Array.from({ length: 33 }, (_, k) => Math.round(2 + Math.pow(k / 3
 const hm = s => { const m = Math.floor(s / 60), h = Math.floor(m / 60); return h ? `${h}h ${m % 60}m` : `${m}m`; };
 const NEON = ['#ff2d95', '#ff7a3d', '#ffd23f', '#25dd5f', '#00e5ff', '#7c4dff', '#ff2d95'];
 function listenTotals() {
-  const days = (typeof stats === 'object' && stats.days) || {}, now = new Date(), today = dayOf(now), month = today.slice(0, 7);
+  const days = (typeof stats === 'object' && stats.days) ? allDays() : {}, now = new Date(), today = dayOf(now), month = today.slice(0, 7);
   const mon = new Date(now); mon.setDate(now.getDate() - ((now.getDay() + 6) % 7)); // weeks start on Monday
   let week = 0; for (let i = 0; i < 7; i++) { const x = new Date(mon); x.setDate(mon.getDate() + i); week += days[dayOf(x)] || 0; }
   let mo = 0, all = 0; for (const [k, v] of Object.entries(days)) { all += v; if (k.startsWith(month)) mo += v; }
@@ -1604,7 +1614,20 @@ function renderFavs(L, q) {
 const dayOf = (d = new Date()) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/London' }).format(d);
 let stats = { days: {}, tracks: {} }, statSaved = 0, lastTick = 0, lastPos = -1, heard = {};
 const statKey = () => 'mp.stats.' + (user ? user.id : 'x');
-function loadStats() { try { stats = JSON.parse(localStorage.getItem(statKey())) || stats; } catch {} stats.days ||= {}; stats.tracks ||= {}; stats.plays ||= {}; stats.loved ||= {}; statLine(); }
+// listening time from your other devices (memopad_listen_time); this device's own count stays in stats.days
+let others = {}, othersAt = 0, pushedAt = 0;
+const dayTotal = k => (stats.days[k] || 0) + (others[k] || 0);
+function allDays() { const o = { ...stats.days }; for (const [k, v] of Object.entries(others)) o[k] = (o[k] || 0) + v; return o; }
+async function syncTime(all) {
+  if (!user) return; const u = user.id;
+  await pushDays(u, 'app', all ? stats.days : { [dayOf()]: stats.days[dayOf()] || 0 });
+  const o = await otherDays(u, 'app'); othersAt = Date.now();
+  if (o && user && user.id === u) { others = o; statLine(); if ($('dash').classList.contains('open')) openDash(); }
+}
+function pushToday() { if (user) { pushedAt = performance.now(); pushDays(user.id, 'app', { [dayOf()]: stats.days[dayOf()] || 0 }); } }
+addEventListener('pagehide', pushToday);
+document.addEventListener('visibilitychange', () => { if (document.hidden) pushToday(); else if (user && Date.now() - othersAt > 60000) syncTime(false); });
+function loadStats() { others = {}; try { stats = JSON.parse(localStorage.getItem(statKey())) || stats; } catch {} stats.days ||= {}; stats.tracks ||= {}; stats.plays ||= {}; stats.loved ||= {}; statLine(); }
 let playCounted = null, playSecs = 0;
 // ---------- play counts and ❤️ Loved (kept in step across your devices once the memopad_listens table exists) ----------
 const LOVED = '\u0001loved', LISTENS = 'memopad_listens';
@@ -1654,34 +1677,35 @@ function tickStats(t) {
   const d = t - lastPos; lastPos = t;
   if (d > 0 && d < 2) { heard[cur.id] = (heard[cur.id] || 0) + d; if (cur.duration && heard[cur.id] >= cur.duration * 0.85) { heard[cur.id] = -1e9; finishedTrack(cur); } }
   if (now - statSaved > 10000) { statSaved = now; localStorage.setItem(statKey(), JSON.stringify(stats)); statLine(); }
+  if (now - pushedAt > 30000) pushToday();
 }
 function streaks() {
-  const has = d => (stats.days[d] || 0) >= 60; let cur = 0, best = 0, run = 0;
+  const T = allDays(), has = d => (T[d] || 0) >= 60; let cur = 0, best = 0, run = 0;
   const d = new Date(); if (!has(dayOf(d))) d.setDate(d.getDate() - 1); // today still counts until midnight
   while (has(dayOf(d))) { cur++; d.setDate(d.getDate() - 1); }
-  Object.keys(stats.days).sort().forEach((k, i, a) => { if (!has(k)) { run = 0; return; } const p = a[i - 1]; const prev = new Date(k + 'T12:00:00'); prev.setDate(prev.getDate() - 1); run = p && has(p) && dayOf(prev) === p ? run + 1 : 1; best = Math.max(best, run); });
+  Object.keys(T).sort().forEach((k, i, a) => { if (!has(k)) { run = 0; return; } const p = a[i - 1]; const prev = new Date(k + 'T12:00:00'); prev.setDate(prev.getDate() - 1); run = p && has(p) && dayOf(prev) === p ? run + 1 : 1; best = Math.max(best, run); });
   return { cur, best: Math.max(best, cur) };
 }
 const mins = s => s < 3600 ? `${Math.round(s / 60)} min` : `${(s / 3600).toFixed(1)} h`;
 const GOAL = 20 * 60; // daily listening goal shown in the ring
 function statLine() {
-  const s = streaks(), today = stats.days[dayOf()] || 0, f = Math.min(1, today / GOAL), C = 2 * Math.PI * 26;
+  const s = streaks(), today = dayTotal(dayOf()), f = Math.min(1, today / GOAL), C = 2 * Math.PI * 26;
   $('ringArc').setAttribute('stroke-dasharray', `${(f * C).toFixed(1)} ${C.toFixed(1)}`); $('ringTxt').textContent = Math.round(today / 60);
   $('statTxt').textContent = `${Math.round(today / 60)} of ${GOAL / 60} min today`;
   $('statSub').textContent = s.cur ? `${s.cur}-day streak · best ${s.best}` : 'Listen a minute to start a streak';
-  const days = []; const d = new Date(); d.setDate(d.getDate() - 6); for (let i = 0; i < 7; i++) { days.push(stats.days[dayOf(d)] || 0); d.setDate(d.getDate() + 1); }
+  const days = []; const d = new Date(); d.setDate(d.getDate() - 6); for (let i = 0; i < 7; i++) { days.push(dayTotal(dayOf(d))); d.setDate(d.getDate() + 1); }
   const mx = Math.max(GOAL, ...days);
   $('miniBars').innerHTML = days.map((v, i) => `<i class="${i === 6 ? 'now' : ''}" style="height:${Math.max(v ? 8 : 4, v / mx * 100)}%"></i>`).join('');
 }
 function openDash() {
   localStorage.setItem(statKey(), JSON.stringify(stats));
-  const s = streaks(), today = stats.days[dayOf()] || 0, all = Object.values(stats.days).reduce((a, b) => a + b, 0);
-  let week = 0; const d = new Date(); for (let i = 0; i < 7; i++) { week += stats.days[dayOf(d)] || 0; d.setDate(d.getDate() - 1); }
+  const s = streaks(), today = dayTotal(dayOf()), all = Object.values(allDays()).reduce((a, b) => a + b, 0);
+  let week = 0; const d = new Date(); for (let i = 0; i < 7; i++) { week += dayTotal(dayOf(d)); d.setDate(d.getDate() - 1); }
   const tile = (v, l) => `<div class="dtile"><b>${v}</b><span>${l}</span></div>`;
   $('dGrid').innerHTML = tile(mins(today), 'today') + tile(mins(week), 'last 7 days') + tile(`${s.cur} day${s.cur === 1 ? '' : 's'}`, 'current streak') + tile(`${s.best} day${s.best === 1 ? '' : 's'}`, 'best streak') + tile(mins(all), 'all time');
   const days = []; const e = new Date(); e.setDate(e.getDate() - 13); for (let i = 0; i < 14; i++) { days.push(dayOf(e)); e.setDate(e.getDate() + 1); }
-  const mx = Math.max(60, ...days.map(k => stats.days[k] || 0));
-  $('dBars').innerHTML = days.map((k, i) => { const v = stats.days[k] || 0; return `<div class="db${i === 13 ? ' now' : ''}" title="${k}: ${mins(v)}"><i style="height:${Math.max(v ? 4 : 0, v / mx * 100)}%"></i><span>${new Date(k + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'narrow' })}</span></div>`; }).join('');
+  const mx = Math.max(60, ...days.map(k => dayTotal(k)));
+  $('dBars').innerHTML = days.map((k, i) => { const v = dayTotal(k); return `<div class="db${i === 13 ? ' now' : ''}" title="${k}: ${mins(v)}"><i style="height:${Math.max(v ? 4 : 0, v / mx * 100)}%"></i><span>${new Date(k + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'narrow' })}</span></div>`; }).join('');
   const top = Object.entries(stats.tracks).map(([id, v]) => [tracks.find(t => t.id === id), v]).filter(x => x[0]).sort((a, b) => b[1] - a[1]).slice(0, 5);
   $('dTop').innerHTML = top.length ? top.map(([t, v]) => `<div class="dt"><span>${esc(t.title)}</span><b>${mins(v)}</b></div>`).join('') : '<div class="dt"><span>Nothing yet. Press play to start your streak.</span></div>';
   $('dash').classList.add('open');

@@ -7,7 +7,7 @@ import { speakBlob } from './tts.js';
 import { parseYt, loadYtApi, beatTiles } from './yt.js';
 import { mpTiles } from './beats.js';
 import { LOFI_DRAW } from './lofi.js';
-import { readDoc, DOC_ACCEPT } from './doctext.js';
+import { readDoc, DOC_ACCEPT, splitLines } from './doctext.js';
 import { audioGet, audioPut, supabase } from './cloud.js';
 import { dayOf, pushDays, otherDays } from './listentime.js';
 const $ = id => document.getElementById(id);
@@ -33,11 +33,10 @@ $('vRow').onclick = e => { const b = e.target.closest('.vchip'); if (!b) return;
 const clean = s => s.replace(/^\s*(?:[-*•·]|\d+[.)])\s+/, '').trim();
 function parse(text) {
   const out = []; let n = 0;
-  for (const raw of text.split(/\r?\n/)) {
-    const t = raw.trim(); if (!t) continue;
+  for (const t of splitLines(text)) {
     if (/^#+\s*/.test(t)) { out.push({ head: true, text: t.replace(/^#+\s*/, '') }); continue; }
     const c = clean(t); if (!c) continue;
-    if (n >= MAX) break; out.push({ text: c.slice(0, 480) }); n++;
+    if (n >= MAX) break; out.push({ text: c.slice(0, 2500) }); n++;
   }
   return out;
 }
@@ -55,6 +54,12 @@ function openReader() {
 }
 const esc = s => s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
 $('text').oninput = countText;
+// pasting keeps one affirmation or prayer per line, however the source broke its lines
+$('text').addEventListener('paste', e => {
+  const t = e.clipboardData?.getData('text/plain'); if (!t) return; e.preventDefault();
+  const el = $('text'), a = el.selectionStart, b = el.selectionEnd, ins = splitLines(t).join('\n');
+  el.value = el.value.slice(0, a) + ins + el.value.slice(b); el.selectionStart = el.selectionEnd = a + ins.length; countText();
+});
 $('load').onclick = openReader;
 $('edit').onclick = () => { stop(); localStorage.removeItem(LS + '-files'); $('readBox').hidden = true; $('editBox').hidden = false; placeSettings(false); };
 $('file').accept = DOC_ACCEPT + ',audio/*';

@@ -6,7 +6,7 @@ import { audioPut, supabase, BUCKET, TABLE, trackToRow } from './cloud.js';
 import { VOICES, orb } from './voices.js';
 import { speakBlob, elevenReason } from './tts.js';
 import { addMic } from './dictate.js';
-import { readDoc, DOC_ACCEPT } from './doctext.js';
+import { readDoc, DOC_ACCEPT, splitLines } from './doctext.js';
 const $ = id => document.getElementById(id);
 const SR = 44100;
 let vMode = 'ai', mMode = 'calm', recBlob = null, voiceFileBlob = null, musicFileBuf = null, aiBuf = null, busy = false, outUrl = null, last = null;
@@ -111,7 +111,7 @@ async function writeForMe() {
   writing = false; $('write').disabled = false;
 }
 // chapter headings (# Title) are spoken as plain lines here; the Reader shows them as headings
-const lines = () => $('text').value.split('\n').map(s => s.replace(/^#+\s*/, '').trim()).filter(Boolean);
+const lines = () => splitLines($('text').value).map(s => s.replace(/^#+\s*/, '').trim()).filter(Boolean);
 const fmt = s => { s = Math.round(s); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 function updateCount() {
   const L = lines(); if (!L.length) { $('count').textContent = ''; return; }
@@ -304,7 +304,12 @@ $('docFile').onchange = async e => {
   e.target.value = '';
 };
 try { const d = JSON.parse(sessionStorage.getItem('mp.doc') || 'null'); if (d && d.text) { sessionStorage.removeItem('mp.doc'); $('text').value = d.text; updateCount(); $('docInfo').textContent = `Added ${d.text.split('\n').length} lines from ${d.name}. Pick a voice and make your track.`; } } catch {}
-$('text').oninput = updateCount; $('rep').onchange = updateCount; $('gap').onchange = updateCount;
+$('text').oninput = updateCount;
+$('text').addEventListener('paste', e => { // keep one affirmation or prayer per line
+  const t = e.clipboardData?.getData('text/plain'); if (!t) return; e.preventDefault();
+  const el = $('text'), a = el.selectionStart, b = el.selectionEnd, ins = splitLines(t).join('\n');
+  el.value = el.value.slice(0, a) + ins + el.value.slice(b); el.selectionStart = el.selectionEnd = a + ins.length; updateCount();
+}); $('rep').onchange = updateCount; $('gap').onchange = updateCount;
 $('goal').onkeydown = e => { if (e.key === 'Enter') writeForMe(); };
 
 

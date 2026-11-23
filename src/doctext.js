@@ -35,8 +35,23 @@ function rtfText(s) {
     .replace(/\\u(-?\d+) ?\??/g, (_, n) => String.fromCharCode(n < 0 ? 65536 + +n : +n)).replace(/\\[a-z]+-?\d* ?/gi, '');
 }
 const htmlText = s => new DOMParser().parseFromString(s.replace(/<(br|\/p|\/li|\/h\d|\/div)[^>]*>/gi, '$&\n'), 'text/html').body.textContent || '';
-// tidy: drop list numbers and bullets, keep one affirmation per line
-const tidy = t => t.replace(/\r/g, '').split('\n').map(l => l.replace(/^\s*(?:[-*•●▪◦–]\s*|\d{1,4}[.)](?:\s+|(?=[A-Za-z])))/, '').replace(/\s+/g, ' ').trim()).filter(Boolean).join('\n');
+// One affirmation (or prayer) per line, whatever the text came from:
+// - any kind of line break counts (Windows, old Mac, iPhone Notes' line separators)
+// - a line that was only wrapped (no end punctuation, next line starts in lower case) is joined back up
+// - list numbers and bullets are dropped
+const END = /[.!?:;…"”'’)\]]$/;
+export function splitLines(text) {
+  const raw = String(text || '').replace(/\r\n?|[\u2028\u2029\u0085\v\f]/g, '\n').replace(/\u00a0/g, ' ').split('\n').map(l => l.replace(/\s+/g, ' ').trim());
+  const out = [];
+  for (const l of raw) {
+    if (!l) { out.push(''); continue; }
+    const prev = out[out.length - 1];
+    if (prev && !prev.startsWith('#') && !END.test(prev) && /^[a-z(,]/.test(l)) out[out.length - 1] = prev + ' ' + l;
+    else out.push(l);
+  }
+  return out.map(l => l.replace(/^(?:[-*•●▪◦–·]\s*|\d{1,4}[.)](?:\s+|(?=[A-Za-z])))/, '').trim()).filter(Boolean);
+}
+const tidy = t => splitLines(t).join('\n');
 
 export async function readDoc(f) {
   const n = f.name.toLowerCase();

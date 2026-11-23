@@ -12,11 +12,21 @@ export const cacheKey = (voiceId, text, speed = 1) => `tts:${voiceId}:${hash(tex
 export function elevenReason(e) {
   try { const d = JSON.parse(e.detail || '{}').detail || {}; return [d.status, d.message].filter(Boolean).join(': ').slice(0, 200); } catch { return String(e.detail || '').slice(0, 200); }
 }
+// busy (429) or a hiccup (5xx, network): wait a moment and try again, so playback carries on instead of stalling
 async function eleven(text, voice, speed = 1, ctx = {}) {
-  const r = await fetch('/api/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, voice, speed, prev: ctx.prev || '', next: ctx.next || '' }) });
+  for (let t = 0; ; t++) {
+    try { return await eleven1(text, voice, speed, ctx); }
+    catch (e) { if (t >= 3 || !e.retry) throw e; await new Promise(r => setTimeout(r, 700 * 2 ** t)); }
+  }
+}
+async function eleven1(text, voice, speed = 1, ctx = {}) {
+  let r;
+  try { r = await fetch('/api/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, voice, speed, prev: ctx.prev || '', next: ctx.next || '' }) }); }
+  catch (err) { throw Object.assign(new Error('the connection dropped'), { retry: true }); }
   if (!r.ok) {
     const e = await r.json().catch(() => ({}));
-    throw new Error({ not_configured: 'ElevenLabs is not switched on yet (the API key is missing)', text: 'that line is too long, keep each line under 500 characters' }[e.error] || `ElevenLabs said no (${e.status || r.status}${elevenReason(e) ? ', ' + elevenReason(e) : ''})`);
+    const busy = r.status === 429 || e.status === 429 || (r.status >= 500 && !(e.status >= 400 && e.status < 500));
+    throw Object.assign(new Error({ not_configured: 'ElevenLabs is not switched on yet (the API key is missing)', text: 'that line is too long, keep each line under 2500 characters' }[e.error] || `ElevenLabs said no (${e.status || r.status}${elevenReason(e) ? ', ' + elevenReason(e) : ''})`), { retry: busy && e.error !== 'not_configured' });
   }
   return r.blob();
 }

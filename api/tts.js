@@ -5,7 +5,7 @@ const VOICES = {
   JBFqnCBsd6RMkjVDRZzb: 'George', Xb7hH8MSUJpSbSDYk0k2: 'Alice', EXAVITQu4vr4xnSDxMaL: 'Sarah',
   nPczCjzI2devNBz1zQrb: 'Brian', SAz9YHcvj6GT2YYXdXww: 'River', bIHbv24MWmeRgasZH58o: 'Will',
 };
-const MAX_CHARS = 500;
+const MAX_CHARS = 2500; // long prayers are one line too
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
@@ -19,7 +19,7 @@ export default async function handler(req, res) {
   const text = String(body?.text || '').trim(), voice = String(body?.voice || '');
   const speed = Math.min(1.2, Math.max(0.7, +body?.speed || 1)); // ElevenLabs allows 0.7 to 1.2
   // the lines before and after: ElevenLabs uses them so each line flows on naturally (not read like a fresh start)
-  const prev = String(body?.prev || '').slice(0, MAX_CHARS), next = String(body?.next || '').slice(0, MAX_CHARS);
+  const prev = String(body?.prev || '').slice(-500), next = String(body?.next || '').slice(0, 500);
   if (!VOICES[voice]) return res.status(400).json({ error: 'voice' });
   if (!text || text.length > MAX_CHARS) return res.status(400).json({ error: 'text', max: MAX_CHARS });
   const call = vs => fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voice}?output_format=mp3_44100_128`, {

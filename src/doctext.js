@@ -85,6 +85,12 @@ export function splitSentences(t) {
   }
   return out.map(s => s.trim()).filter(Boolean);
 }
+// a couple of sentences per spoken piece (up to about 300 characters): flows better and asks the voice less often
+function chunks(ss) {
+  const out = [];
+  for (const t of ss) { const l = out[out.length - 1]; if (l && l.length + t.length < 300) out[out.length - 1] = l + ' ' + t; else out.push(t); }
+  return out;
+}
 // lines: from splitLines. Returns [{head:true,text}] or [{text, intro:true, para, end}] or [{text}]
 export function structure(lines) {
   const L = lines.map(t => ({ t, head: /^#+\s*/.test(t) }));
@@ -104,7 +110,7 @@ export function structure(lines) {
   L.forEach((x, i) => {
     const text = x.head ? x.t.replace(/^#+\s*/, '') : x.t;
     if (x.head) out.push({ head: true, text });
-    else if (prose.has(i)) { const ss = splitSentences(text); para++; ss.forEach((t, j) => out.push({ text: t, intro: true, para, end: j === ss.length - 1 })); }
+    else if (prose.has(i)) { const ss = chunks(splitSentences(text)); para++; ss.forEach((t, j) => out.push({ text: t, intro: true, para, end: j === ss.length - 1 })); }
     else out.push({ text });
   });
   return out;

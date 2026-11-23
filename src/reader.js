@@ -149,9 +149,9 @@ let token = 0, lastSrc = '';
    no clicks between lines, and it keeps going with the screen locked. (Old browsers fall back to the plain player.) */
 const bufs = new Map(); let live = [], timers = [];
 function trim(buf) {
-  const ch = [...Array(buf.numberOfChannels)].map((_, c) => buf.getChannelData(c)), n = buf.length, th = 0.012, pad = Math.round(buf.sampleRate * 0.04);
-  let a = 0, z = n - 1; const loud = i => ch.some(d => Math.abs(d[i]) > th);
-  while (a < n && !loud(a)) a++; while (z > a && !loud(z)) z--;
+  const ch = [...Array(buf.numberOfChannels)].map((_, c) => buf.getChannelData(c)), n = buf.length, th = 0.012, pad = Math.round(buf.sampleRate * 0.04), d = ch[0];
+  let a = 0, z = n - 1;
+  while (a < n && Math.abs(d[a]) <= th) a++; while (z > a && Math.abs(d[z]) <= th) z--;
   a = Math.max(0, a - pad); z = Math.min(n - 1, z + pad * 2); if (z - a < buf.sampleRate * 0.2) return buf;
   const out = ac.createBuffer(buf.numberOfChannels, z - a + 1, buf.sampleRate);
   ch.forEach((d, c) => out.copyToChannel(d.subarray(a, z + 1), c)); return out;
@@ -167,10 +167,13 @@ function bufFor(i, onDl) {
 }
 function halt() { live.forEach(n => { try { n.stop(); } catch {} }); live = []; timers.forEach(clearTimeout); timers = []; }
 const later = (f, sec) => timers.push(setTimeout(f, Math.max(0, sec) * 1000));
+let fails = 0;
 function plan(k, rep, at, my) {
   const i = spoken[k];
+  // if the voice is slow to arrive, say so (instead of looking frozen)
+  const slow = setTimeout(() => { if (my === token && playing) $('now').textContent = 'Getting the next line ready…'; }, Math.max(0, (at - ac.currentTime) * 1000) + 600);
   bufFor(i, p => ($('now').textContent = `Downloading the free voice… ${Math.round(p * 100)}%`)).then(buf => {
-    if (my !== token || !playing) return;
+    clearTimeout(slow); if (my !== token || !playing) return; fails = 0;
     const now = ac.currentTime; at = Math.max(at, now + 0.03);
     const rate = isEl() || items[i].file ? 1 : +$('rate').value, dur = buf.duration / rate, f = Math.min(0.02, dur / 4);
     const src = ac.createBufferSource(), g = ac.createGain(); src.buffer = buf; src.playbackRate.value = rate;
@@ -181,7 +184,12 @@ function plan(k, rep, at, my) {
     if (nrep < 1) { nk = k + 1; nrep = repFor(nk); if (nk >= spoken.length) { if ($('loopAll').checked) nk = 0; else { later(() => { if (my === token) { stop(); $('now').textContent = 'Finished. Did you get the message?'; } }, at + dur - now); return; } } }
     // line up the next one as soon as this one starts, so it is ready (and already scheduled) before this ends
     later(() => { if (my === token) { plan(nk, nrep, at + dur + gapAfter(k), my); for (let x = 1; x <= AHEAD; x++) { const j = spoken[nk + x]; if (j != null) bufFor(j).catch(() => {}); } } }, at - now);
-  }).catch(err => { if (my === token) { stop(); $('now').textContent = 'The voice could not play: ' + (err.message || err) + '.'; } });
+  }).catch(err => {
+    clearTimeout(slow); if (my !== token) return;
+    // one line the voice can't read shouldn't stop the whole session: skip it and carry on
+    if (++fails < 3 && k + 1 < spoken.length) { $('now').textContent = 'Skipped a line the voice could not read.'; plan(k + 1, repFor(k + 1), ac.currentTime + 0.3, my); return; }
+    stop(); $('now').textContent = 'The voice could not play: ' + (err.message || err) + '.';
+  });
 }
 async function speakCurrent() {
   const my = ++token; clearTimeout(gapTimer); halt(); show();

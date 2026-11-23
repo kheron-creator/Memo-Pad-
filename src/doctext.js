@@ -71,12 +71,14 @@ export async function readDoc(f) {
    Like ElevenReader: a document that opens with prose (an introduction, a story, a chapter opening)
    is read as flowing paragraphs, sentence by sentence, said once. The lines that follow are
    affirmations, one per line, and these are the ones that repeat. */
-const sentencesIn = t => (t.match(/[^.!?…]+(?:[.!?…]+["'”’)\]]*|$)/g) || [t]).map(s => s.trim()).filter(Boolean);
+// no look-behind in these patterns: older iPhones (before iOS 16.4) cannot load a page that uses it
+const cut = t => t.replace(/([.!?…]+["'”’)\]]*)\s+/g, '$1\u0000').split('\u0000').map(s => s.trim()).filter(Boolean);
+const sentencesIn = t => cut(t);
 const isLong = t => t.length > 180 || (t.length > 90 && sentencesIn(t).filter(s => s.length > 12).length >= 3);
 const isShort = t => t.length <= 140 && sentencesIn(t).length <= 2;
 export function splitSentences(t) {
   const out = [];
-  for (const s of t.split(/(?<=[.!?…]["'”’)\]]*)\s+(?=["'“‘(\[]?[A-Z0-9])/)) {
+  for (const s of t.replace(/([.!?…]+["'”’)\]]*)\s+(?=["'“‘(\[]?[A-Z0-9])/g, '$1\u0000').split('\u0000')) {
     // keep tiny pieces ("Mr.", "Ps. 23:1.") with the sentence that follows
     const last = out[out.length - 1];
     if (last && (last.length < 12 || /\b(?:Mr|Mrs|Ms|Dr|St|Ps|Rev|Prov|Gen|Matt|Rom|vs|etc|e\.g|i\.e)\.$/i.test(last))) out[out.length - 1] += ' ' + s; else out.push(s);

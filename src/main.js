@@ -7,6 +7,7 @@ import { transcriptChapters } from './chapters.js';
 import { parseScript, alignToAsr, spreadOverVoice, scriptChapters } from './script.js';
 import { displayStarts } from './sync.js';
 import { LOFI_DRAW } from './lofi.js';
+import { popOutSweep } from './sweep.js';
 
 const $ = id => document.getElementById(id);
 const audio = $('audio');
@@ -2054,3 +2055,6 @@ setReaderLight(!!localStorage.getItem('mp.readerLight'));
   drag($('rzL'), 'l'); drag($('rzR'), 'r'); load();
   $('rzL').ondblclick = $('rzR').ondblclick = () => { app.style.removeProperty('--lw'); app.style.removeProperty('--rw'); localStorage.removeItem('mp.widths'); drawOverview(); };
 })();
+
+// ---------- pop out the Progress Pad Mind Sweep as a small floating window ----------
+$('sweepPop').addEventListener('click', () => { popOutSweep(); });
